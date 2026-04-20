@@ -1,0 +1,23 @@
+import { createClient } from '@/lib/supabase/server';
+import Navbar from '@/components/Navbar';
+import DashboardClient from '@/components/DashboardClient';
+
+export default async function DashboardPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('display_name')
+    .eq('id', user.id)
+    .single();
+
+  const userName = profile?.display_name || user.email.split('@')[0];
+
+  return (
+    <>
+      <Navbar userName={userName} />
+      <DashboardClient userName={userName} />
+    </>
+  );
+}
