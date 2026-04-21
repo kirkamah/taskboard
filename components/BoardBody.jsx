@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Plus, X, Check, Trash2, Edit2, Maximize2 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus } from 'lucide-react';
 import { Modal, Toggle } from './UI';
 import { createClient } from '@/lib/supabase/client';
 
@@ -11,10 +11,22 @@ import { createClient } from '@/lib/supabase/client';
  * Props:
  *  - scope: 'personal' (личная доска) или 'room' (комната)
  *  - roomId (нужен если scope='room')
- *  - userId (текущий пользователь, нужен для личной доски)
+ *  - userId (текущий пользователь)
  *  - canEdit (bool): можно ли редактировать задачи (для наблюдателей — false)
+ *  - members (только для 'room'): [{ user_id, role }, ...]
+ *  - profiles (только для 'room'): { user_id: display_name, ... }
+ *  - currentUserRole (только для 'room'): 'owner' | 'editor' | 'viewer'
+ *      Назначать на задачи может только owner.
  */
-export default function BoardBody({ scope, roomId, userId, canEdit }) {
+export default function BoardBody({
+  scope,
+  roomId,
+  userId,
+  canEdit,
+  members = [],
+  profiles = {},
+  currentUserRole = null,
+}) {
   const supabase = createClient();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,26 +35,62 @@ export default function BoardBody({ scope, roomId, userId, canEdit }) {
   const [editingTask, setEditingTask] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
-  const [formData, setFormData] = useState({ title: '', description: '', important: true, urgent: true });
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    important: true,
+    urgent: true,
+    due_at: '', // строка из <input type="datetime-local">: YYYY-MM-DDTHH:MM
+    assignees: [], // массив user_id
+  });
 
-  // Загрузка задач
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      let query = supabase.from('tasks').select('*').order('created_at', { ascending: false });
-      if (scope === 'personal') {
-        query = query.eq('owner_id', userId).is('room_id', null);
-      } else {
-        query = query.eq('room_id', roomId);
-      }
-      const { data, error } = await query;
-      if (!error) setTasks(data || []);
-      setLoading(false);
-    };
-    load();
+  const isRoom = scope === 'room';
+  const canAssign = isRoom && currentUserRole === 'owner';
+
+  // Конвертация: timestamptz из БД -> локальная строка для datetime-local input
+  const isoToLocalInput = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  // Конвертация: локальная строка -> ISO для отправки в БД
+  const localInputToIso = (local) => {
+    if (!local) return null;
+    const d = new Date(local);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  };
+
+  // Загрузка задач + назначений одним запросом
+  const loadTasks = useCallback(async () => {
+    let query = supabase
+      .from('tasks')
+      .select('*, task_assignees(user_id)')
+      .order('created_at', { ascending: false });
+    if (scope === 'personal') {
+      query = query.eq('owner_id', userId).is('room_id', null);
+    } else {
+      query = query.eq('room_id', roomId);
+    }
+    const { data, error } = await query;
+    if (!error) {
+      const flat = (data || []).map((t) => ({
+        ...t,
+        assignees: (t.task_assignees || []).map((a) => a.user_id),
+      }));
+      setTasks(flat);
+    }
   }, [scope, roomId, userId]);
 
-  // Realtime: подписка на изменения
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    loadTasks().finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [loadTasks]);
+
+  // Realtime: подписка на изменения tasks
   useEffect(() => {
     const channel = supabase
       .channel(`tasks-${scope}-${roomId || userId}`)
@@ -53,19 +101,24 @@ export default function BoardBody({ scope, roomId, userId, canEdit }) {
           table: 'tasks',
           filter: scope === 'personal' ? `owner_id=eq.${userId}` : `room_id=eq.${roomId}`
         },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            setTasks((prev) => prev.some(t => t.id === payload.new.id) ? prev : [payload.new, ...prev]);
-          } else if (payload.eventType === 'UPDATE') {
-            setTasks((prev) => prev.map(t => t.id === payload.new.id ? payload.new : t));
-          } else if (payload.eventType === 'DELETE') {
-            setTasks((prev) => prev.filter(t => t.id !== payload.old.id));
-          }
-        }
+        () => loadTasks()
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [scope, roomId, userId]);
+  }, [scope, roomId, userId, loadTasks]);
+
+  // Realtime: подписка на изменения назначений (только для комнат)
+  useEffect(() => {
+    if (!isRoom) return;
+    const channel = supabase
+      .channel(`assignees-${roomId}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'task_assignees' },
+        () => loadTasks()
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [isRoom, roomId, loadTasks]);
 
   const quadrants = [
     { important: true, urgent: true, title: 'Важно и срочно' },
@@ -78,20 +131,39 @@ export default function BoardBody({ scope, roomId, userId, canEdit }) {
   const completedTasks = tasks.filter(t => t.done);
 
   const openAdd = () => {
-    setFormData({ title: '', description: '', important: true, urgent: true });
+    setFormData({ title: '', description: '', important: true, urgent: true, due_at: '', assignees: [] });
     setEditingTask(null);
     setShowAddModal(true);
   };
 
   const openEdit = (task) => {
-    setFormData({ title: task.title, description: task.description || '', important: task.important, urgent: task.urgent });
+    setFormData({
+      title: task.title,
+      description: task.description || '',
+      important: task.important,
+      urgent: task.urgent,
+      due_at: isoToLocalInput(task.due_at),
+      assignees: task.assignees || [],
+    });
     setEditingTask(task);
     setSelectedTask(null);
     setShowAddModal(true);
   };
 
+  // Синхронизация назначений: удаляем старые, вставляем новые
+  const syncAssignees = async (taskId, newAssignees) => {
+    if (!isRoom) return;
+    await supabase.from('task_assignees').delete().eq('task_id', taskId);
+    if (newAssignees.length > 0) {
+      const rows = newAssignees.map((uid) => ({ task_id: taskId, user_id: uid }));
+      await supabase.from('task_assignees').insert(rows);
+    }
+  };
+
   const save = async () => {
     if (!formData.title.trim()) return;
+    const dueIso = localInputToIso(formData.due_at);
+
     if (editingTask) {
       const { data, error } = await supabase
         .from('tasks')
@@ -99,13 +171,15 @@ export default function BoardBody({ scope, roomId, userId, canEdit }) {
           title: formData.title,
           description: formData.description,
           important: formData.important,
-          urgent: formData.urgent
+          urgent: formData.urgent,
+          due_at: dueIso,
         })
         .eq('id', editingTask.id)
         .select()
         .single();
       if (!error && data) {
-        setTasks((prev) => prev.map(t => t.id === data.id ? data : t));
+        if (canAssign) await syncAssignees(data.id, formData.assignees);
+        await loadTasks();
       }
     } else {
       const payload = {
@@ -114,11 +188,13 @@ export default function BoardBody({ scope, roomId, userId, canEdit }) {
         important: formData.important,
         urgent: formData.urgent,
         done: false,
+        due_at: dueIso,
         ...(scope === 'personal' ? { owner_id: userId, room_id: null } : { room_id: roomId, owner_id: null })
       };
       const { data, error } = await supabase.from('tasks').insert(payload).select().single();
       if (!error && data) {
-        setTasks((prev) => prev.some(t => t.id === data.id) ? prev : [data, ...prev]);
+        if (canAssign) await syncAssignees(data.id, formData.assignees);
+        await loadTasks();
       }
     }
     setShowAddModal(false);
@@ -133,8 +209,48 @@ export default function BoardBody({ scope, roomId, userId, canEdit }) {
 
   const toggleDone = async (task) => {
     const { data } = await supabase.from('tasks').update({ done: !task.done }).eq('id', task.id).select().single();
-    if (data) setTasks((prev) => prev.map(t => t.id === data.id ? data : t));
+    if (data) setTasks((prev) => prev.map(t => t.id === data.id ? { ...t, ...data, assignees: t.assignees } : t));
     setSelectedTask(null);
+  };
+
+  // Формат даты для отображения: "сегодня, 14:30" / "завтра, 09:00" / "15 мая, 14:30"
+  const formatDue = (iso) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    const now = new Date();
+    const sameDay = d.toDateString() === now.toDateString();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+    const sameTomorrow = d.toDateString() === tomorrow.toDateString();
+    const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    if (sameDay) return `сегодня, ${time}`;
+    if (sameTomorrow) return `завтра, ${time}`;
+    const date = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    return `${date}, ${time}`;
+  };
+
+  // Цвет дедлайна: красный (просрочено), жёлтый (в пределах 24ч), серый (позже)
+  const getDueClasses = (iso, done) => {
+    if (!iso) return null;
+    if (done) return 'text-gray-400 bg-gray-50 border-gray-200';
+    const diff = new Date(iso).getTime() - Date.now();
+    if (diff < 0) return 'text-red-700 bg-red-50 border-red-200';
+    if (diff < 24 * 60 * 60 * 1000) return 'text-amber-700 bg-amber-50 border-amber-200';
+    return 'text-gray-600 bg-gray-50 border-gray-200';
+  };
+
+  // Аватарка пользователя — кружок с первой буквой и tooltip с именем
+  const Avatar = ({ uid }) => {
+    const name = profiles[uid] || 'Пользователь';
+    const initial = (name.trim()[0] || '?').toUpperCase();
+    return (
+      <div
+        className="w-6 h-6 rounded-full bg-gray-200 border border-white flex items-center justify-center text-xs font-medium text-gray-700"
+        title={name}
+      >
+        {initial}
+      </div>
+    );
   };
 
   if (loading) {
@@ -174,19 +290,44 @@ export default function BoardBody({ scope, roomId, userId, canEdit }) {
               </div>
               <div className="space-y-2">
                 {qTasks.length === 0 && <p className="text-xs text-gray-400 text-center py-6">Пусто</p>}
-                {qTasks.map(task => (
-                  <div
-                    key={task.id}
-                    onClick={() => setSelectedTask(task)}
-                    className="group border border-gray-200 rounded-md p-3 hover:border-gray-400 hover:shadow-sm cursor-pointer bg-white transition-all"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-sm font-medium text-gray-900 line-clamp-2 flex-1">{task.title}</h3>
-                      <Maximize2 size={12} className="text-gray-300 group-hover:text-gray-500 mt-1 flex-shrink-0" />
+                {qTasks.map(task => {
+                  const dueClasses = getDueClasses(task.due_at, task.done);
+                  return (
+                    <div
+                      key={task.id}
+                      onClick={() => setSelectedTask(task)}
+                      className="group border border-gray-200 rounded-md p-3 hover:border-gray-400 hover:shadow-sm cursor-pointer bg-white transition-all"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="text-sm font-medium text-gray-900 line-clamp-2 flex-1">{task.title}</h3>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {(task.assignees || []).length > 0 && (
+                            <div className="flex -space-x-1">
+                              {task.assignees.slice(0, 3).map((uid) => (
+                                <Avatar key={uid} uid={uid} />
+                              ))}
+                              {task.assignees.length > 3 && (
+                                <div
+                                  className="w-6 h-6 rounded-full bg-gray-100 border border-white flex items-center justify-center text-xs text-gray-600"
+                                  title={task.assignees.slice(3).map((u) => profiles[u] || 'Пользователь').join(', ')}
+                                >
+                                  +{task.assignees.length - 3}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <Maximize2 size={12} className="text-gray-300 group-hover:text-gray-500 ml-1" />
+                        </div>
+                      </div>
+                      {task.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</p>}
+                      {task.due_at && (
+                        <div className={`mt-2 inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded ${dueClasses}`}>
+                          <Calendar size={10} /> {formatDue(task.due_at)}
+                        </div>
+                      )}
                     </div>
-                    {task.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</p>}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           );
@@ -217,18 +358,35 @@ export default function BoardBody({ scope, roomId, userId, canEdit }) {
           <div className="flex items-start justify-between p-6 border-b border-gray-200">
             <div className="flex-1 pr-4">
               <h2 className="text-xl font-semibold text-gray-900">{selectedTask.title}</h2>
-              <div className="flex gap-2 mt-2">
+              <div className="flex gap-2 mt-2 flex-wrap">
                 <span className="text-xs px-2 py-1 border border-gray-300 rounded">{selectedTask.important ? 'Важно' : 'Не важно'}</span>
                 <span className="text-xs px-2 py-1 border border-gray-300 rounded">{selectedTask.urgent ? 'Срочно' : 'Не срочно'}</span>
+                {selectedTask.due_at && (
+                  <span className={`text-xs px-2 py-1 border rounded inline-flex items-center gap-1 ${getDueClasses(selectedTask.due_at, selectedTask.done)}`}>
+                    <Calendar size={11} /> {formatDue(selectedTask.due_at)}
+                  </span>
+                )}
               </div>
             </div>
             <button onClick={() => setSelectedTask(null)} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
           </div>
           <div className="p-6">
-            <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Описание</h3>
-            <p className="text-gray-700 whitespace-pre-wrap">
+            <p className="text-sm text-gray-700 whitespace-pre-wrap">
               {selectedTask.description || <span className="text-gray-400">Описание не указано</span>}
             </p>
+            {isRoom && (selectedTask.assignees || []).length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <p className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Назначены</p>
+                <div className="flex flex-wrap gap-2">
+                  {selectedTask.assignees.map((uid) => (
+                    <div key={uid} className="flex items-center gap-2 border border-gray-200 rounded-full pl-1 pr-3 py-0.5">
+                      <Avatar uid={uid} />
+                      <span className="text-sm text-gray-700">{profiles[uid] || 'Пользователь'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           {canEdit && (
             <div className="flex items-center justify-between p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
@@ -288,6 +446,66 @@ export default function BoardBody({ scope, roomId, userId, canEdit }) {
                 </div>
               </div>
             </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Срок выполнения (необязательно)</label>
+              <div className="flex gap-2">
+                <input
+                  type="datetime-local"
+                  value={formData.due_at}
+                  onChange={(e) => setFormData({ ...formData, due_at: e.target.value })}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900"
+                />
+                {formData.due_at && (
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, due_at: '' })}
+                    className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-600"
+                    title="Убрать срок"
+                  >
+                    Очистить
+                  </button>
+                )}
+              </div>
+            </div>
+            {canAssign && members.length > 0 && (
+              <div>
+                <label className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
+                  <UserPlus size={12} /> Назначить участников (необязательно)
+                </label>
+                <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto">
+                  {members.map((m) => {
+                    const checked = formData.assignees.includes(m.user_id);
+                    const name = profiles[m.user_id] || 'Пользователь';
+                    return (
+                      <label
+                        key={m.user_id}
+                        className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...formData.assignees, m.user_id]
+                              : formData.assignees.filter((u) => u !== m.user_id);
+                            setFormData({ ...formData, assignees: next });
+                          }}
+                          className="w-4 h-4"
+                        />
+                        <Avatar uid={m.user_id} />
+                        <span className="text-sm text-gray-800 flex-1">{name}</span>
+                        <span className="text-xs text-gray-400">
+                          {m.role === 'owner' ? 'Владелец' : m.role === 'editor' ? 'Редактор' : 'Наблюдатель'}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {formData.assignees.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-2">Выбрано: {formData.assignees.length}</p>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
             <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100">Отмена</button>
