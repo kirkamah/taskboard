@@ -16,7 +16,7 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <Navbar userName={userName} />
+      <Navbar userName={userName} userId={user.id} />
       <DashboardClient userName={userName} />
     </>
   );
