@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Users, Copy, Eye, Shield, Crown } from 'lucide-react';
+import { ArrowLeft, Users, Copy, Eye, Shield, Crown, Trash2, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import BoardBody from '@/components/BoardBody';
+import { Modal } from '@/components/UI';
 
 function RoleBadge({ role }) {
   const config = {
@@ -29,6 +30,9 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
   const [profiles, setProfiles] = useState(initialProfiles);
   const [showMembers, setShowMembers] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
 
   const myRole = members.find(m => m.user_id === userId)?.role;
   const canEdit = myRole === 'owner' || myRole === 'editor';
@@ -77,6 +81,19 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
     router.push('/dashboard');
   };
 
+  const deleteRoom = async () => {
+    if (confirmText.trim() !== room.name) return;
+    setDeleting(true);
+    const { error } = await supabase.from('rooms').delete().eq('id', room.id);
+    if (error) {
+      setDeleting(false);
+      alert('Не удалось удалить комнату: ' + error.message);
+      return;
+    }
+    // Каскад в БД сам удалит room_members и tasks
+    router.push('/dashboard');
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-6 py-6">
       <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
@@ -107,6 +124,14 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
               className="px-4 py-2 text-sm border border-red-300 text-red-600 rounded-lg bg-white hover:bg-red-50"
             >
               Покинуть комнату
+            </button>
+          )}
+          {canManage && (
+            <button
+              onClick={() => { setShowDeleteModal(true); setConfirmText(''); }}
+              className="px-4 py-2 text-sm border border-red-300 text-red-600 rounded-lg bg-white hover:bg-red-50 flex items-center gap-2"
+            >
+              <Trash2 size={16} /> Удалить комнату
             </button>
           )}
           <button
@@ -172,6 +197,53 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
           </div>
         )}
       </div>
+
+      {showDeleteModal && (
+        <Modal onClose={() => setShowDeleteModal(false)}>
+          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-red-700">Удалить комнату?</h2>
+            <button onClick={() => setShowDeleteModal(false)} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
+          </div>
+          <div className="p-6 space-y-3">
+            <p className="text-sm text-gray-700">
+              Вы собираетесь навсегда удалить комнату <span className="font-semibold">«{room.name}»</span>.
+            </p>
+            <p className="text-sm text-gray-700">
+              Все задачи в комнате и список участников будут безвозвратно удалены. Личные доски участников не пострадают.
+            </p>
+            <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">
+              Это действие нельзя отменить.
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
+                Для подтверждения введите название комнаты: <span className="font-mono normal-case">{room.name}</span>
+              </label>
+              <input
+                type="text"
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-red-500"
+                autoFocus
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+            <button
+              onClick={() => setShowDeleteModal(false)}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
+            >
+              Отмена
+            </button>
+            <button
+              onClick={deleteRoom}
+              disabled={confirmText.trim() !== room.name || deleting}
+              className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              {deleting ? 'Удаляем...' : 'Удалить навсегда'}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
