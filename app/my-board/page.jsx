@@ -18,7 +18,7 @@ export default async function MyBoardPage() {
 
   return (
     <>
-      <Navbar userName={userName} />
+      <Navbar userName={userName} userId={user.id} />
       <div className="max-w-7xl mx-auto px-6 py-6">
         <Link href="/dashboard" className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1 mb-2">
           <ArrowLeft size={16} /> На главную
