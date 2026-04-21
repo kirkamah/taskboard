@@ -68,10 +68,10 @@ export default function BoardBody({ scope, roomId, userId, canEdit }) {
   }, [scope, roomId, userId]);
 
   const quadrants = [
-    { important: true, urgent: true, title: 'Важно и срочно', hint: 'Делать сейчас' },
-    { important: true, urgent: false, title: 'Важно, не срочно', hint: 'Запланировать' },
-    { important: false, urgent: true, title: 'Не важно, срочно', hint: 'Делегировать' },
-    { important: false, urgent: false, title: 'Не важно, не срочно', hint: 'Отложить / удалить' }
+    { important: true, urgent: true, title: 'Важно и срочно' },
+    { important: true, urgent: false, title: 'Важно, не срочно' },
+    { important: false, urgent: true, title: 'Не важно, срочно' },
+    { important: false, urgent: false, title: 'Не важно, не срочно' }
   ];
 
   const getTasksFor = (imp, urg) => tasks.filter(t => t.important === imp && t.urgent === urg && !t.done);
@@ -169,10 +169,7 @@ export default function BoardBody({ scope, roomId, userId, canEdit }) {
           return (
             <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4 min-h-[240px]">
               <div className="flex items-baseline justify-between mb-3 pb-3 border-b border-gray-100">
-                <div>
-                  <h2 className="font-semibold text-gray-900">{q.title}</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">{q.hint}</p>
-                </div>
+                <h2 className="font-semibold text-gray-900">{q.title}</h2>
                 <span className="text-xs text-gray-400">{qTasks.length}</span>
               </div>
               <div className="space-y-2">
