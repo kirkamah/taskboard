@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus } from 'lucide-react';
+import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus, MessageSquare, Send } from 'lucide-react';
 import { Modal, Toggle } from './UI';
 import { createClient } from '@/lib/supabase/client';
 
@@ -35,6 +35,12 @@ export default function BoardBody({
   const [editingTask, setEditingTask] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+  // Модалка для работы с запросами на выполнение:
+  //   { mode: 'create', taskId } — отправка запроса назначенным
+  //   { mode: 'respond', requestId, action: 'approve'|'reject' } — ответ владельца/редактора
+  const [requestModal, setRequestModal] = useState(null);
+  const [requestNote, setRequestNote] = useState('');
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -62,11 +68,11 @@ export default function BoardBody({
     return isNaN(d.getTime()) ? null : d.toISOString();
   };
 
-  // Загрузка задач + назначений одним запросом
+  // Загрузка задач + назначений + активных запросов одним запросом
   const loadTasks = useCallback(async () => {
     let query = supabase
       .from('tasks')
-      .select('*, task_assignees(user_id)')
+      .select('*, task_assignees(user_id), task_completion_requests(id, requester_id, request_note, status, created_at)')
       .order('created_at', { ascending: false });
     if (scope === 'personal') {
       query = query.eq('owner_id', userId).is('room_id', null);
@@ -78,6 +84,7 @@ export default function BoardBody({
       const flat = (data || []).map((t) => ({
         ...t,
         assignees: (t.task_assignees || []).map((a) => a.user_id),
+        pendingRequests: (t.task_completion_requests || []).filter(r => r.status === 'pending'),
       }));
       setTasks(flat);
     }
@@ -114,6 +121,19 @@ export default function BoardBody({
       .channel(`assignees-${roomId}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'task_assignees' },
+        () => loadTasks()
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [isRoom, roomId, loadTasks]);
+
+  // Realtime: подписка на изменения запросов на выполнение
+  useEffect(() => {
+    if (!isRoom) return;
+    const channel = supabase
+      .channel(`requests-${roomId}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'task_completion_requests' },
         () => loadTasks()
       )
       .subscribe();
@@ -209,8 +229,60 @@ export default function BoardBody({
 
   const toggleDone = async (task) => {
     const { data } = await supabase.from('tasks').update({ done: !task.done }).eq('id', task.id).select().single();
-    if (data) setTasks((prev) => prev.map(t => t.id === data.id ? { ...t, ...data, assignees: t.assignees } : t));
+    if (data) setTasks((prev) => prev.map(t => t.id === data.id ? { ...t, ...data, assignees: t.assignees, pendingRequests: t.pendingRequests } : t));
     setSelectedTask(null);
+  };
+
+  // Отправить запрос на выполнение (назначенный → owner/editor)
+  const submitCreateRequest = async () => {
+    if (!requestModal || requestModal.mode !== 'create') return;
+    setRequestSubmitting(true);
+    const { error } = await supabase.rpc('create_completion_request', {
+      _task_id: requestModal.taskId,
+      _note: requestNote.trim() || null,
+    });
+    setRequestSubmitting(false);
+    if (error) {
+      alert('Не удалось отправить запрос: ' + error.message);
+      return;
+    }
+    setRequestModal(null);
+    setRequestNote('');
+    setSelectedTask(null);
+    await loadTasks();
+  };
+
+  // Отозвать свой активный запрос по задаче
+  const withdrawMyRequest = async (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    const myRequest = task?.pendingRequests?.find(r => r.requester_id === userId);
+    if (!myRequest) return;
+    const { error } = await supabase.rpc('withdraw_completion_request', { _request_id: myRequest.id });
+    if (error) {
+      alert('Не удалось отозвать: ' + error.message);
+      return;
+    }
+    await loadTasks();
+  };
+
+  // Ответить на запрос (одобрить/отклонить)
+  const submitRespondRequest = async () => {
+    if (!requestModal || requestModal.mode !== 'respond') return;
+    setRequestSubmitting(true);
+    const { error } = await supabase.rpc('respond_to_completion_request', {
+      _request_id: requestModal.requestId,
+      _action: requestModal.action,
+      _note: requestNote.trim() || null,
+    });
+    setRequestSubmitting(false);
+    if (error) {
+      alert('Не удалось ответить: ' + error.message);
+      return;
+    }
+    setRequestModal(null);
+    setRequestNote('');
+    setSelectedTask(null);
+    await loadTasks();
   };
 
   // Формат даты для отображения: "сегодня, 14:30" / "завтра, 09:00" / "15 мая, 14:30"
@@ -320,11 +392,18 @@ export default function BoardBody({
                         </div>
                       </div>
                       {task.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</p>}
-                      {task.due_at && (
-                        <div className={`mt-2 inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded ${dueClasses}`}>
-                          <Calendar size={10} /> {formatDue(task.due_at)}
-                        </div>
-                      )}
+                      <div className="mt-2 flex items-center gap-2 flex-wrap">
+                        {task.due_at && (
+                          <div className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded ${dueClasses}`}>
+                            <Calendar size={10} /> {formatDue(task.due_at)}
+                          </div>
+                        )}
+                        {isRoom && canEdit && (task.pendingRequests || []).length > 0 && (
+                          <div className="inline-flex items-center gap-1 text-xs px-2 py-0.5 border border-blue-200 bg-blue-50 text-blue-700 rounded">
+                            <MessageSquare size={10} /> {task.pendingRequests.length} {task.pendingRequests.length === 1 ? 'запрос' : 'запросов'}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -387,8 +466,51 @@ export default function BoardBody({
                 </div>
               </div>
             )}
+            {/* Для owner/editor: список активных запросов на выполнение */}
+            {isRoom && canEdit && (selectedTask.pendingRequests || []).length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <p className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
+                  <MessageSquare size={12} /> Запросы на выполнение
+                </p>
+                <div className="space-y-2">
+                  {selectedTask.pendingRequests.map((req) => (
+                    <div key={req.id} className="border border-blue-200 bg-blue-50/40 rounded-md p-3">
+                      <div className="flex items-start gap-2 mb-2">
+                        <Avatar uid={req.requester_id} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900">
+                            {profiles[req.requester_id] || 'Пользователь'}
+                          </p>
+                          <p className="text-xs text-gray-500">{formatDue(req.created_at) || ''}</p>
+                        </div>
+                      </div>
+                      {req.request_note && (
+                        <p className="text-sm text-gray-700 bg-white border border-gray-200 rounded p-2 mb-2 whitespace-pre-wrap">
+                          {req.request_note}
+                        </p>
+                      )}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { setRequestModal({ mode: 'respond', requestId: req.id, action: 'approve' }); setRequestNote(''); }}
+                          className="flex-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center gap-1"
+                        >
+                          <Check size={12} /> Одобрить
+                        </button>
+                        <button
+                          onClick={() => { setRequestModal({ mode: 'respond', requestId: req.id, action: 'reject' }); setRequestNote(''); }}
+                          className="flex-1 px-3 py-1.5 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 flex items-center justify-center gap-1"
+                        >
+                          <X size={12} /> Отклонить
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-          {canEdit && (
+          {/* Футер: разные варианты в зависимости от прав и назначения */}
+          {canEdit ? (
             <div className="flex items-center justify-between p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
               <button onClick={() => toggleDone(selectedTask)} className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 flex items-center gap-2">
                 <Check size={16} /> Выполнено
@@ -398,6 +520,38 @@ export default function BoardBody({
                 <button onClick={() => del(selectedTask.id)} className="px-3 py-2 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50 flex items-center gap-2"><Trash2 size={14} /> Удалить</button>
               </div>
             </div>
+          ) : (
+            // Наблюдатель: кнопка запроса, если назначен на эту задачу
+            isRoom && (selectedTask.assignees || []).includes(userId) && !selectedTask.done && (
+              <div className="p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+                {(() => {
+                  const myRequest = (selectedTask.pendingRequests || []).find(r => r.requester_id === userId);
+                  if (myRequest) {
+                    return (
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <p className="text-sm text-gray-700">
+                          Ваш запрос на выполнение отправлен
+                        </p>
+                        <button
+                          onClick={() => withdrawMyRequest(selectedTask.id)}
+                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-700"
+                        >
+                          Отозвать
+                        </button>
+                      </div>
+                    );
+                  }
+                  return (
+                    <button
+                      onClick={() => { setRequestModal({ mode: 'create', taskId: selectedTask.id }); setRequestNote(''); }}
+                      className="w-full px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 flex items-center justify-center gap-2"
+                    >
+                      <Send size={14} /> Запросить выполнение
+                    </button>
+                  );
+                })()}
+              </div>
+            )
           )}
         </Modal>
       )}
@@ -510,6 +664,74 @@ export default function BoardBody({
           <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
             <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100">Отмена</button>
             <button onClick={save} disabled={!formData.title.trim()} className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300">{editingTask ? 'Сохранить' : 'Создать'}</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Модалка запроса на выполнение (для назначенного) или ответа на него (для owner/editor) */}
+      {requestModal && (
+        <Modal onClose={() => { setRequestModal(null); setRequestNote(''); }}>
+          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+            <h2 className="text-lg font-semibold">
+              {requestModal.mode === 'create' && 'Запросить выполнение'}
+              {requestModal.mode === 'respond' && requestModal.action === 'approve' && 'Одобрить запрос'}
+              {requestModal.mode === 'respond' && requestModal.action === 'reject' && 'Отклонить запрос'}
+            </h2>
+            <button onClick={() => { setRequestModal(null); setRequestNote(''); }} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
+          </div>
+          <div className="p-6 space-y-3">
+            <p className="text-sm text-gray-600">
+              {requestModal.mode === 'create' && 'Владелец и редакторы комнаты получат уведомление. Можете добавить комментарий (необязательно).'}
+              {requestModal.mode === 'respond' && requestModal.action === 'approve' && 'Задача будет отмечена выполненной. Отправитель получит уведомление.'}
+              {requestModal.mode === 'respond' && requestModal.action === 'reject' && 'Запрос будет отклонён. Отправитель получит уведомление.'}
+            </p>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
+                Комментарий (необязательно)
+              </label>
+              <textarea
+                value={requestNote}
+                onChange={(e) => setRequestNote(e.target.value)}
+                placeholder={requestModal.mode === 'create' ? 'Например: всё готово, прошу проверить' : 'Коротко опишите причину или благодарите'}
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 resize-none text-sm"
+                autoFocus
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+            <button
+              onClick={() => { setRequestModal(null); setRequestNote(''); }}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
+              disabled={requestSubmitting}
+            >
+              Отмена
+            </button>
+            {requestModal.mode === 'create' ? (
+              <button
+                onClick={submitCreateRequest}
+                disabled={requestSubmitting}
+                className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 flex items-center gap-2"
+              >
+                <Send size={14} /> {requestSubmitting ? 'Отправляем...' : 'Отправить'}
+              </button>
+            ) : requestModal.action === 'approve' ? (
+              <button
+                onClick={submitRespondRequest}
+                disabled={requestSubmitting}
+                className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 flex items-center gap-2"
+              >
+                <Check size={14} /> {requestSubmitting ? 'Одобряем...' : 'Одобрить'}
+              </button>
+            ) : (
+              <button
+                onClick={submitRespondRequest}
+                disabled={requestSubmitting}
+                className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 flex items-center gap-2"
+              >
+                <X size={14} /> {requestSubmitting ? 'Отклоняем...' : 'Отклонить'}
+              </button>
+            )}
           </div>
         </Modal>
       )}
