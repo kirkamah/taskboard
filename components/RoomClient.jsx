@@ -145,7 +145,15 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <div className={showMembers ? 'lg:col-span-3' : 'lg:col-span-4'}>
-          <BoardBody scope="room" roomId={room.id} userId={userId} canEdit={canEdit} />
+          <BoardBody
+            scope="room"
+            roomId={room.id}
+            userId={userId}
+            canEdit={canEdit}
+            members={members}
+            profiles={profiles}
+            currentUserRole={myRole}
+          />
         </div>
 
         {showMembers && (
