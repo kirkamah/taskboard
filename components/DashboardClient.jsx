@@ -18,6 +18,7 @@ export default function DashboardClient({ userName }) {
 
   const [joinCode, setJoinCode] = useState('');
   const [joinError, setJoinError] = useState('');
+  const [joinInfo, setJoinInfo] = useState(null); // { roomId, status, role } для already_member / owner
   const [joining, setJoining] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -54,18 +55,33 @@ export default function DashboardClient({ userName }) {
     if (!code) return;
     setJoining(true);
     setJoinError('');
+    setJoinInfo(null);
 
-    // Используем RPC-функцию для поиска и присоединения (обходит RLS контролируемо)
-    const { data: roomId, error } = await supabase.rpc('join_room_by_code', { _code: code });
+    // Используем RPC-функцию: возвращает { room_id, status, role }
+    const { data, error } = await supabase.rpc('join_room_by_code', { _code: code });
 
-    if (error || !roomId) {
+    setJoining(false);
+
+    if (error || !data || !data.room_id) {
       setJoinError('Комната не найдена. Проверьте код.');
-      setJoining(false);
       return;
     }
 
-    router.push(`/room/${roomId}`);
+    // Если только что присоединился как новый участник — сразу в комнату
+    if (data.status === 'joined') {
+      router.push(`/room/${data.room_id}`);
+      return;
+    }
+
+    // Иначе показываем сообщение «вы уже там, как [роль]»
+    setJoinInfo({ roomId: data.room_id, status: data.status, role: data.role });
   };
+
+  const roleLabel = (role) => ({
+    owner: 'Владелец',
+    editor: 'Редактор',
+    viewer: 'Наблюдатель'
+  }[role] || role);
 
   const closeCreateModal = () => {
     setShowCreateModal(false);
@@ -110,7 +126,7 @@ export default function DashboardClient({ userName }) {
           <input
             type="text"
             value={joinCode}
-            onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setJoinError(''); }}
+            onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setJoinError(''); setJoinInfo(null); }}
             placeholder="ABCD1234"
             maxLength={8}
             className="flex-1 px-4 py-3 border border-gray-300 rounded-lg font-mono tracking-widest uppercase focus:outline-none focus:border-gray-900"
@@ -125,6 +141,21 @@ export default function DashboardClient({ userName }) {
           </button>
         </div>
         {joinError && <p className="text-sm text-red-600 mt-2">{joinError}</p>}
+        {joinInfo && (
+          <div className="mt-3 border border-gray-300 bg-gray-50 rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-sm text-gray-700">
+              {joinInfo.status === 'owner'
+                ? 'Это ваша комната — она уже у вас в списке «Мои команды».'
+                : `Вы уже в этой комнате как ${roleLabel(joinInfo.role)}.`}
+            </p>
+            <button
+              onClick={() => router.push(`/room/${joinInfo.roomId}`)}
+              className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800"
+            >
+              Перейти
+            </button>
+          </div>
+        )}
       </div>
 
       {showCreateModal && (
