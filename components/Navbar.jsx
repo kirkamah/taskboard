@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { LogOut, Home } from 'lucide-react';
+import NotificationBell from './NotificationBell';
 
-export default function Navbar({ userName }) {
+export default function Navbar({ userName, userId }) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -22,6 +23,7 @@ export default function Navbar({ userName }) {
           <Home size={18} /> Taskboard
         </Link>
         <div className="flex items-center gap-3 text-sm">
+          {userId && <NotificationBell userId={userId} />}
           <span className="text-gray-500">{userName}</span>
           <button
             onClick={handleLogout}
