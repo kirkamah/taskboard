@@ -40,7 +40,7 @@ export default async function RoomPage({ params }) {
 
   return (
     <>
-      <Navbar userName={userName} />
+      <Navbar userName={userName} userId={user.id} />
       <RoomClient
         room={room}
         initialMembers={members || []}
