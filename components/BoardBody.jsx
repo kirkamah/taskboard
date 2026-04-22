@@ -247,6 +247,36 @@ export default function BoardBody({
     setSelectedTask(null);
   };
 
+  // Помощник/владелец завершает задачу с опциональным текстом.
+  // В комнате вызывает RPC → триггер создаёт уведомление владельцу с note.
+  // В личной доске просто помечает done.
+  const submitEditorComplete = async () => {
+    if (!requestModal || requestModal.mode !== 'editor_complete') return;
+    setRequestSubmitting(true);
+    if (isRoom) {
+      const { error } = await supabase.rpc('complete_task_with_note', {
+        _task_id: requestModal.taskId,
+        _note: requestNote.trim() || null,
+      });
+      setRequestSubmitting(false);
+      if (error) {
+        alert('Не удалось выполнить: ' + error.message);
+        return;
+      }
+    } else {
+      const { error } = await supabase.from('tasks').update({ done: true }).eq('id', requestModal.taskId);
+      setRequestSubmitting(false);
+      if (error) {
+        alert('Не удалось выполнить: ' + error.message);
+        return;
+      }
+    }
+    setRequestModal(null);
+    setRequestNote('');
+    setSelectedTask(null);
+    await loadTasks();
+  };
+
   // Отправить запрос на выполнение (назначенный → owner/editor)
   const submitCreateRequest = async () => {
     if (!requestModal || requestModal.mode !== 'create') return;
@@ -540,7 +570,17 @@ export default function BoardBody({
           {/* Футер: разные варианты в зависимости от прав и назначения */}
           {canEdit ? (
             <div className="flex items-center justify-between p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
-              <button onClick={() => toggleDone(selectedTask)} className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 flex items-center gap-2">
+              <button
+                onClick={() => {
+                  if (isRoom && currentUserRole === 'editor') {
+                    setRequestModal({ mode: 'editor_complete', taskId: selectedTask.id });
+                    setRequestNote('');
+                  } else {
+                    toggleDone(selectedTask);
+                  }
+                }}
+                className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 flex items-center gap-2"
+              >
                 <Check size={16} /> Выполнено
               </button>
               <div className="flex gap-2">
@@ -696,12 +736,13 @@ export default function BoardBody({
         </Modal>
       )}
 
-      {/* Модалка запроса на выполнение (для назначенного) или ответа на него (для owner/editor) */}
+      {/* Модалка: запрос (зритель), ответ на запрос (owner/editor) или выполнение с комментарием (помощник) */}
       {requestModal && (
         <Modal onClose={() => { setRequestModal(null); setRequestNote(''); }}>
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
             <h2 className="text-lg font-semibold">
               {requestModal.mode === 'create' && 'Запросить выполнение'}
+              {requestModal.mode === 'editor_complete' && 'Отметить задачу выполненной'}
               {requestModal.mode === 'respond' && requestModal.action === 'approve' && 'Одобрить запрос'}
               {requestModal.mode === 'respond' && requestModal.action === 'reject' && 'Отклонить запрос'}
             </h2>
@@ -709,18 +750,23 @@ export default function BoardBody({
           </div>
           <div className="p-6 space-y-3">
             <p className="text-sm text-gray-600">
-              {requestModal.mode === 'create' && 'Владелец и помощники комнаты получат уведомление. Можете добавить комментарий (необязательно).'}
+              {requestModal.mode === 'create' && 'Владелец и помощники комнаты получат уведомление. Опишите, что сделано — это обязательно.'}
+              {requestModal.mode === 'editor_complete' && 'Задача будет отмечена выполненной, владелец получит уведомление. Можете добавить комментарий (необязательно).'}
               {requestModal.mode === 'respond' && requestModal.action === 'approve' && 'Задача будет отмечена выполненной. Отправитель получит уведомление.'}
               {requestModal.mode === 'respond' && requestModal.action === 'reject' && 'Запрос будет отклонён. Отправитель получит уведомление.'}
             </p>
             <div>
               <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
-                Комментарий (необязательно)
+                {requestModal.mode === 'create' ? (<>Комментарий <span className="text-red-500 normal-case">*</span></>) : 'Комментарий (необязательно)'}
               </label>
               <textarea
                 value={requestNote}
                 onChange={(e) => setRequestNote(e.target.value)}
-                placeholder={requestModal.mode === 'create' ? 'Например: всё готово, прошу проверить' : 'Коротко опишите причину или благодарите'}
+                placeholder={
+                  requestModal.mode === 'create' ? 'Например: всё готово, прошу проверить'
+                  : requestModal.mode === 'editor_complete' ? 'Например: сделано, отчёт прикреплён'
+                  : 'Коротко опишите причину или благодарите'
+                }
                 rows={4}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 resize-none text-sm"
                 autoFocus
@@ -738,10 +784,18 @@ export default function BoardBody({
             {requestModal.mode === 'create' ? (
               <button
                 onClick={submitCreateRequest}
-                disabled={requestSubmitting}
+                disabled={requestSubmitting || !requestNote.trim()}
                 className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 flex items-center gap-2"
               >
                 <Send size={14} /> {requestSubmitting ? 'Отправляем...' : 'Отправить'}
+              </button>
+            ) : requestModal.mode === 'editor_complete' ? (
+              <button
+                onClick={submitEditorComplete}
+                disabled={requestSubmitting}
+                className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 flex items-center gap-2"
+              >
+                <Check size={14} /> {requestSubmitting ? 'Сохраняем...' : 'Выполнено'}
               </button>
             ) : requestModal.action === 'approve' ? (
               <button

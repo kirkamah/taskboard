@@ -190,6 +190,7 @@ export default function Navbar({ userName, userId, userProfile }) {
                       : (n.payload?.task_title || 'Задача');
                     const requestNote = n.payload?.request_note;
                     const responseNote = n.payload?.response_note;
+                    const completionNote = n.payload?.completion_note;
                     const { Icon } = meta;
 
                     return (
@@ -232,6 +233,12 @@ export default function Navbar({ userName, userId, userProfile }) {
                               <div className="bg-gray-50 border border-gray-200 rounded-md p-2 text-sm text-gray-700">
                                 <p className="text-[10px] font-medium text-gray-500 uppercase mb-1">Комментарий</p>
                                 <LinkifiedText text={responseNote} />
+                              </div>
+                            )}
+                            {completionNote && (
+                              <div className="bg-gray-50 border border-gray-200 rounded-md p-2 text-sm text-gray-700">
+                                <p className="text-[10px] font-medium text-gray-500 uppercase mb-1">Комментарий</p>
+                                <LinkifiedText text={completionNote} />
                               </div>
                             )}
                             <button
