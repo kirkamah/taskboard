@@ -116,7 +116,7 @@ export default function DashboardClient({ userName }) {
         </Link>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
+      <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6">
         <div className="flex items-center gap-2 mb-3">
           <LogIn size={18} className="text-gray-700" />
           <h2 className="font-semibold text-gray-900">Присоединиться к чужой доске</h2>
@@ -129,13 +129,13 @@ export default function DashboardClient({ userName }) {
             onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setJoinError(''); setJoinInfo(null); }}
             placeholder="ABCD1234"
             maxLength={8}
-            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg font-mono tracking-widest uppercase focus:outline-none focus:border-gray-900"
+            className="flex-1 min-w-0 w-full px-3 sm:px-4 py-3 border border-gray-300 rounded-lg font-mono tracking-wider sm:tracking-widest uppercase focus:outline-none focus:border-gray-900"
             onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
           />
           <button
             onClick={handleJoin}
             disabled={joinCode.length < 1 || joining}
-            className="px-6 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            className="flex-shrink-0 px-4 sm:px-6 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
             {joining ? 'Входим...' : 'Войти'}
           </button>
