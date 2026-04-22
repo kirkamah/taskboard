@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Bell, MessageSquare, Check, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import LinkifiedText from './LinkifiedText';
 
 /**
  * Компонент колокольчика уведомлений в шапке.
@@ -188,13 +189,13 @@ export default function NotificationBell({ userId }) {
                         {requestNote && (
                           <div className="bg-gray-50 border border-gray-200 rounded-md p-2 text-sm text-gray-700">
                             <p className="text-[10px] font-medium text-gray-500 uppercase mb-1">Комментарий</p>
-                            {requestNote}
+                            <LinkifiedText text={requestNote} />
                           </div>
                         )}
                         {responseNote && (
                           <div className="bg-gray-50 border border-gray-200 rounded-md p-2 text-sm text-gray-700">
                             <p className="text-[10px] font-medium text-gray-500 uppercase mb-1">Комментарий</p>
-                            {responseNote}
+                            <LinkifiedText text={responseNote} />
                           </div>
                         )}
                         <button

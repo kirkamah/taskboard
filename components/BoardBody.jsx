@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus, MessageSquare, Send } from 'lucide-react';
 import { Modal, Toggle } from './UI';
+import LinkifiedText from './LinkifiedText';
 import { createClient } from '@/lib/supabase/client';
 
 /**
@@ -451,7 +452,9 @@ export default function BoardBody({
           </div>
           <div className="p-6">
             <p className="text-sm text-gray-700 whitespace-pre-wrap">
-              {selectedTask.description || <span className="text-gray-400">Описание не указано</span>}
+              {selectedTask.description
+                ? <LinkifiedText text={selectedTask.description} />
+                : <span className="text-gray-400">Описание не указано</span>}
             </p>
             {isRoom && (selectedTask.assignees || []).length > 0 && (
               <div className="mt-4 pt-4 border-t border-gray-100">
@@ -486,7 +489,7 @@ export default function BoardBody({
                       </div>
                       {req.request_note && (
                         <p className="text-sm text-gray-700 bg-white border border-gray-200 rounded p-2 mb-2 whitespace-pre-wrap">
-                          {req.request_note}
+                          <LinkifiedText text={req.request_note} />
                         </p>
                       )}
                       <div className="flex gap-2">
