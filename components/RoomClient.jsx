@@ -7,6 +7,7 @@ import { ArrowLeft, Users, Copy, Eye, Shield, Crown, Trash2, Edit2, UserCheck, X
 import { createClient } from '@/lib/supabase/client';
 import BoardBody from '@/components/BoardBody';
 import Avatar from '@/components/Avatar';
+import TagsPanel from '@/components/TagsPanel';
 import { Modal } from '@/components/UI';
 
 function RoleBadge({ role }) {
@@ -43,6 +44,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
   const [transferConfirmText, setTransferConfirmText] = useState('');
   const [transferring, setTransferring] = useState(false);
   const [flashMsg, setFlashMsg] = useState('');
+  const [tags, setTags] = useState([]);
 
   const myRole = members.find(m => m.user_id === userId)?.role;
   const canEdit = myRole === 'owner' || myRole === 'editor';
@@ -94,6 +96,28 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [room.id, userId]);
+
+  // Теги комнаты: загрузка + realtime
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      const { data } = await supabase
+        .from('room_tags')
+        .select('id, name, color, created_at')
+        .eq('room_id', room.id)
+        .order('created_at', { ascending: true });
+      if (alive) setTags(data || []);
+    };
+    load();
+    const channel = supabase
+      .channel(`tags-${room.id}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'room_tags', filter: `room_id=eq.${room.id}` },
+        () => load()
+      )
+      .subscribe();
+    return () => { alive = false; supabase.removeChannel(channel); };
+  }, [room.id]);
 
   const updateRole = async (targetUserId, newRole) => {
     await supabase.from('room_members').update({ role: newRole }).eq('room_id', room.id).eq('user_id', targetUserId);
@@ -236,10 +260,13 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
             members={members}
             profiles={profiles}
             currentUserRole={myRole}
+            tags={tags}
           />
         </div>
 
         {showMembers && (
+          <div className="space-y-4">
+          {canManage && <TagsPanel roomId={room.id} tags={tags} />}
           <div className="bg-white border border-gray-200 rounded-lg p-4 h-fit">
             <h2 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
               <Users size={16} /> Участники
@@ -285,6 +312,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
                 );
               })}
             </div>
+          </div>
           </div>
         )}
       </div>

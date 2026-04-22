@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus, MessageSquare, Send } from 'lucide-react';
+import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus, MessageSquare, Send, Tag as TagIcon } from 'lucide-react';
 import { Modal, Toggle } from './UI';
 import LinkifiedText from './LinkifiedText';
 import Avatar from './Avatar';
+import Tag from './Tag';
 import { createClient } from '@/lib/supabase/client';
 
 /**
@@ -28,6 +29,7 @@ export default function BoardBody({
   members = [],
   profiles = {},
   currentUserRole = null,
+  tags = [],
 }) {
   const supabase = createClient();
   const [tasks, setTasks] = useState([]);
@@ -52,6 +54,7 @@ export default function BoardBody({
     urgent: true,
     due_at: '', // строка из <input type="datetime-local">: YYYY-MM-DDTHH:MM
     assignees: [], // массив user_id
+    tags: [], // массив tag_id
   });
 
   const isRoom = scope === 'room';
@@ -76,7 +79,7 @@ export default function BoardBody({
   const loadTasks = useCallback(async () => {
     let query = supabase
       .from('tasks')
-      .select('*, task_assignees(user_id), task_completion_requests(id, requester_id, request_note, status, created_at)')
+      .select('*, task_assignees(user_id), task_completion_requests(id, requester_id, request_note, status, created_at), task_tags(tag_id)')
       .order('created_at', { ascending: false });
     if (scope === 'personal') {
       query = query.eq('owner_id', userId).is('room_id', null);
@@ -89,6 +92,7 @@ export default function BoardBody({
         ...t,
         assignees: (t.task_assignees || []).map((a) => a.user_id),
         pendingRequests: (t.task_completion_requests || []).filter(r => r.status === 'pending'),
+        tagIds: (t.task_tags || []).map((tt) => tt.tag_id),
       }));
       setTasks(flat);
     }
@@ -144,6 +148,20 @@ export default function BoardBody({
     return () => { supabase.removeChannel(channel); };
   }, [isRoom, roomId, loadTasks]);
 
+  // Realtime: task_tags — назначения тегов меняются (owner добавил/убрал из задачи,
+  // либо тег был удалён на уровне БД, что каскадно удаляет связи).
+  useEffect(() => {
+    if (!isRoom) return;
+    const channel = supabase
+      .channel(`task-tags-${roomId}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'task_tags' },
+        () => loadTasks()
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [isRoom, roomId, loadTasks]);
+
   const quadrants = [
     { important: true, urgent: true, title: 'Важно и срочно' },
     { important: true, urgent: false, title: 'Важно, не срочно' },
@@ -155,7 +173,7 @@ export default function BoardBody({
   const completedTasks = tasks.filter(t => t.done);
 
   const openAdd = () => {
-    setFormData({ title: '', description: '', important: true, urgent: true, due_at: '', assignees: [] });
+    setFormData({ title: '', description: '', important: true, urgent: true, due_at: '', assignees: [], tags: [] });
     setEditingTask(null);
     setShowAddModal(true);
   };
@@ -168,6 +186,7 @@ export default function BoardBody({
       urgent: task.urgent,
       due_at: isoToLocalInput(task.due_at),
       assignees: task.assignees || [],
+      tags: task.tagIds || [],
     });
     setEditingTask(task);
     setSelectedTask(null);
@@ -181,6 +200,16 @@ export default function BoardBody({
     if (newAssignees.length > 0) {
       const rows = newAssignees.map((uid) => ({ task_id: taskId, user_id: uid }));
       await supabase.from('task_assignees').insert(rows);
+    }
+  };
+
+  // Синхронизация тегов задачи
+  const syncTags = async (taskId, newTagIds) => {
+    if (!isRoom) return;
+    await supabase.from('task_tags').delete().eq('task_id', taskId);
+    if (newTagIds.length > 0) {
+      const rows = newTagIds.map((tagId) => ({ task_id: taskId, tag_id: tagId }));
+      await supabase.from('task_tags').insert(rows);
     }
   };
 
@@ -203,6 +232,7 @@ export default function BoardBody({
         .single();
       if (!error && data) {
         if (canAssign) await syncAssignees(data.id, formData.assignees);
+        if (isRoom && canEdit) await syncTags(data.id, formData.tags);
         await loadTasks();
       }
     } else {
@@ -218,6 +248,7 @@ export default function BoardBody({
       const { data, error } = await supabase.from('tasks').insert(payload).select().single();
       if (!error && data) {
         if (canAssign) await syncAssignees(data.id, formData.assignees);
+        if (isRoom && canEdit) await syncTags(data.id, formData.tags);
         await loadTasks();
       }
     }
@@ -357,6 +388,8 @@ export default function BoardBody({
 
   const getName = (uid) => profiles[uid]?.display_name || 'Пользователь';
   const getProfile = (uid) => profiles[uid] || null;
+  const tagsById = tags.reduce((acc, t) => { acc[t.id] = t; return acc; }, {});
+  const getTaskTags = (task) => (task.tagIds || []).map((id) => tagsById[id]).filter(Boolean);
 
   if (loading) {
     return <p className="text-sm text-gray-500 text-center py-8">Загрузка задач...</p>;
@@ -448,7 +481,10 @@ export default function BoardBody({
                         </div>
                       </div>
                       {task.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{task.description}</p>}
-                      <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                        {getTaskTags(task).map((tag) => (
+                          <Tag key={tag.id} tag={tag} size="xs" />
+                        ))}
                         {task.due_at && (
                           <div className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded ${dueClasses}`}>
                             <Calendar size={10} /> {formatDue(task.due_at)}
@@ -511,6 +547,18 @@ export default function BoardBody({
                 ? <LinkifiedText text={selectedTask.description} />
                 : <span className="text-gray-400">Описание не указано</span>}
             </p>
+            {isRoom && getTaskTags(selectedTask).length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <p className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
+                  <TagIcon size={12} /> Теги
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {getTaskTags(selectedTask).map((tag) => (
+                    <Tag key={tag.id} tag={tag} />
+                  ))}
+                </div>
+              </div>
+            )}
             {isRoom && (selectedTask.assignees || []).length > 0 && (
               <div className="mt-4 pt-4 border-t border-gray-100">
                 <p className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Назначены</p>
@@ -689,6 +737,36 @@ export default function BoardBody({
                 )}
               </div>
             </div>
+            {isRoom && canEdit && tags.length > 0 && (
+              <div>
+                <label className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
+                  <TagIcon size={12} /> Теги (необязательно)
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {tags.map((t) => {
+                    const checked = formData.tags.includes(t.id);
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          const next = checked
+                            ? formData.tags.filter((id) => id !== t.id)
+                            : [...formData.tags, t.id];
+                          setFormData({ ...formData, tags: next });
+                        }}
+                        className={`rounded transition-all ${
+                          checked ? 'ring-2 ring-gray-900 ring-offset-1' : 'opacity-60 hover:opacity-100'
+                        }`}
+                        aria-pressed={checked}
+                      >
+                        <Tag tag={t} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             {canAssign && members.length > 0 && (
               <div>
                 <label className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
