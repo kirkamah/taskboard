@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, MessageSquare, Check, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Bell, MessageSquare, Check, X, ChevronDown, ChevronUp, Crown } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import LinkifiedText from './LinkifiedText';
 
@@ -114,6 +114,8 @@ export default function NotificationBell({ userId }) {
         return { label: 'Запрос отклонён', Icon: X, color: 'text-red-600' };
       case 'task_completed':
         return { label: 'Задача выполнена', Icon: Check, color: 'text-green-600' };
+      case 'ownership_transferred':
+        return { label: 'Передача владения', Icon: Crown, color: 'text-amber-600' };
       default:
         return { label: 'Уведомление', Icon: MessageSquare, color: 'text-gray-600' };
     }
@@ -150,8 +152,11 @@ export default function NotificationBell({ userId }) {
               items.map((n) => {
                 const meta = typeMeta(n.type);
                 const expanded = expandedId === n.id;
+                const isOwnership = n.type === 'ownership_transferred';
                 const roomName = n.payload?.room_name || 'Комната';
-                const taskTitle = n.payload?.task_title || 'Задача';
+                const taskTitle = isOwnership
+                  ? `Вам передали владение комнатой «${roomName}»`
+                  : (n.payload?.task_title || 'Задача');
                 const requestNote = n.payload?.request_note;
                 const responseNote = n.payload?.response_note;
                 const { Icon } = meta;
@@ -202,7 +207,7 @@ export default function NotificationBell({ userId }) {
                           onClick={() => goToTask(n)}
                           className="w-full px-3 py-2 text-sm bg-gray-900 text-white rounded-md hover:bg-gray-800"
                         >
-                          Перейти к задаче
+                          {isOwnership ? 'Перейти к комнате' : 'Перейти к задаче'}
                         </button>
                       </div>
                     )}

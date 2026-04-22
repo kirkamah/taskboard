@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Users, Copy, Eye, Shield, Crown, Trash2, Edit2, X } from 'lucide-react';
+import { ArrowLeft, Users, Copy, Eye, Shield, Crown, Trash2, Edit2, UserCheck, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import BoardBody from '@/components/BoardBody';
 import { Modal } from '@/components/UI';
@@ -37,6 +37,11 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [renameText, setRenameText] = useState('');
   const [renaming, setRenaming] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferRecipient, setTransferRecipient] = useState(null);
+  const [transferConfirmText, setTransferConfirmText] = useState('');
+  const [transferring, setTransferring] = useState(false);
+  const [flashMsg, setFlashMsg] = useState('');
 
   const myRole = members.find(m => m.user_id === userId)?.role;
   const canEdit = myRole === 'owner' || myRole === 'editor';
@@ -108,6 +113,25 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
     setShowRenameModal(false);
   };
 
+  const transferOwnership = async () => {
+    if (!transferRecipient || transferConfirmText.trim() !== roomName) return;
+    setTransferring(true);
+    const { error } = await supabase.rpc('transfer_room_ownership', {
+      _room_id: room.id,
+      _new_owner_id: transferRecipient
+    });
+    setTransferring(false);
+    if (error) {
+      alert('Не удалось передать владение: ' + error.message);
+      return;
+    }
+    setShowTransferModal(false);
+    setTransferRecipient(null);
+    setTransferConfirmText('');
+    setFlashMsg('Владение передано');
+    setTimeout(() => setFlashMsg(''), 2500);
+  };
+
   const deleteRoom = async () => {
     if (confirmText.trim() !== roomName) return;
     setDeleting(true);
@@ -123,6 +147,11 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-6">
+      {flashMsg && (
+        <div className="mb-4 px-4 py-2 bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg">
+          {flashMsg}
+        </div>
+      )}
       <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
         <div>
           <Link href="/dashboard" className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1 mb-2">
@@ -160,6 +189,12 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
                 className="px-4 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-100 flex items-center gap-2"
               >
                 <Edit2 size={16} /> Переименовать
+              </button>
+              <button
+                onClick={() => { setShowTransferModal(true); setTransferRecipient(null); setTransferConfirmText(''); }}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-100 flex items-center gap-2"
+              >
+                <UserCheck size={16} /> Передать владение
               </button>
               <button
                 onClick={() => { setShowDeleteModal(true); setConfirmText(''); }}
@@ -321,6 +356,82 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
               className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed"
             >
               {renaming ? 'Сохраняем...' : 'Сохранить'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {showTransferModal && (
+        <Modal onClose={() => setShowTransferModal(false)}>
+          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Передать владение комнатой</h2>
+            <button onClick={() => setShowTransferModal(false)} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
+          </div>
+          <div className="p-6 space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
+                Кому передать
+              </label>
+              {members.filter(m => m.user_id !== userId).length === 0 ? (
+                <p className="text-sm text-gray-500">В комнате нет других участников.</p>
+              ) : (
+                <div className="space-y-1 max-h-60 overflow-y-auto">
+                  {members.filter(m => m.user_id !== userId).map((m) => {
+                    const name = getName(m.user_id);
+                    const initial = (name.trim()[0] || '?').toUpperCase();
+                    const selected = transferRecipient === m.user_id;
+                    const roleLabel = m.role === 'editor' ? 'Помощник' : m.role === 'viewer' ? 'Зритель' : m.role;
+                    return (
+                      <button
+                        key={m.user_id}
+                        onClick={() => setTransferRecipient(m.user_id)}
+                        className={`w-full flex items-center gap-3 px-3 py-2 border rounded-lg text-left ${selected ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
+                      >
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${selected ? 'bg-white text-gray-900' : 'bg-gray-200 text-gray-700'}`}>
+                          {initial}
+                        </div>
+                        <span className="text-sm flex-1 truncate">{name}</span>
+                        <span className={`text-xs ${selected ? 'text-gray-300' : 'text-gray-500'}`}>{roleLabel}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {transferRecipient && (
+              <>
+                <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">
+                  После передачи вы станете <span className="font-semibold">Помощником</span> и не сможете управлять комнатой (переименовать, удалять, менять роли).
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
+                    Для подтверждения введите название комнаты: <span className="font-mono normal-case">{roomName}</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={transferConfirmText}
+                    onChange={(e) => setTransferConfirmText(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900"
+                    autoFocus
+                  />
+                </div>
+              </>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+            <button
+              onClick={() => setShowTransferModal(false)}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
+            >
+              Отмена
+            </button>
+            <button
+              onClick={transferOwnership}
+              disabled={!transferRecipient || transferConfirmText.trim() !== roomName || transferring}
+              className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              {transferring ? 'Передаём...' : 'Передать'}
             </button>
           </div>
         </Modal>
