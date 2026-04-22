@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { LogOut, Home, User, ChevronDown } from 'lucide-react';
+import { LogOut, User, ChevronDown } from 'lucide-react';
 import NotificationBell from './NotificationBell';
 import Avatar from './Avatar';
 
@@ -35,7 +35,7 @@ export default function Navbar({ userName, userId, userProfile }) {
     <nav className="bg-white border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
         <Link href="/dashboard" className="font-semibold text-gray-900 flex items-center gap-2">
-          <Home size={18} /> Taskboard
+          <img src="/logo.svg" alt="Taskboard" width="24" height="24" /> Taskboard
         </Link>
         <div className="flex items-center gap-3 text-sm">
           {userId && <NotificationBell userId={userId} />}

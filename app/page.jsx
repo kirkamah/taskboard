@@ -4,6 +4,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-6">
       <div className="max-w-md text-center">
+        <img src="/logo.svg" alt="Taskboard" width="64" height="64" className="mx-auto mb-4" />
         <h1 className="text-4xl font-semibold text-gray-900 mb-3">Taskboard</h1>
         <p className="text-gray-600 mb-8">
           Матрица задач по приоритетам. Личные доски и общие комнаты с друзьями.
