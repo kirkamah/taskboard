@@ -35,7 +35,7 @@ export default function Navbar({ userName, userId, userProfile }) {
     <nav className="bg-white border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
         <Link href="/dashboard" className="font-semibold text-gray-900 flex items-center gap-2">
-          <img src="/logo.svg" alt="Taskboard" width="24" height="24" /> Taskboard
+          <img src="/logo.svg" alt="Taskboard" className="w-10 h-10" /> Taskboard
         </Link>
         <div className="flex items-center gap-3 text-sm">
           {userId && <NotificationBell userId={userId} />}
