@@ -26,7 +26,9 @@ function ColorPicker({ value, onChange }) {
   );
 }
 
-export default function TagsPanel({ roomId, tags }) {
+export default function TagsPanel({ roomId, ownerId, tags }) {
+  // Either roomId (комната) или ownerId (личная доска) должны быть заданы
+  const scopeCols = roomId ? { room_id: roomId, owner_id: null } : { owner_id: ownerId, room_id: null };
   const supabase = createClient();
   const [showEditor, setShowEditor] = useState(false);
   const [editingTag, setEditingTag] = useState(null); // null = create; otherwise tag object
@@ -68,7 +70,7 @@ export default function TagsPanel({ roomId, tags }) {
     } else {
       const { error } = await supabase
         .from('room_tags')
-        .insert({ room_id: roomId, name, color: formColor });
+        .insert({ ...scopeCols, name, color: formColor });
       setSaving(false);
       if (error) { setError(err2msg(error)); return; }
     }

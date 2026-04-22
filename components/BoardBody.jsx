@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus, MessageSquare, Send, Tag as TagIcon } from 'lucide-react';
+import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus, MessageSquare, Send, Tag as TagIcon, ListChecks } from 'lucide-react';
 import { Modal, Toggle } from './UI';
 import LinkifiedText from './LinkifiedText';
 import Avatar from './Avatar';
@@ -55,7 +55,9 @@ export default function BoardBody({
     due_at: '', // строка из <input type="datetime-local">: YYYY-MM-DDTHH:MM
     assignees: [], // массив user_id
     tags: [], // массив tag_id
+    checklist: [], // [{id?, text, done}]
   });
+  const MAX_CHECKLIST_ITEMS = 10;
 
   const isRoom = scope === 'room';
   const canAssign = isRoom && currentUserRole === 'owner';
@@ -79,7 +81,7 @@ export default function BoardBody({
   const loadTasks = useCallback(async () => {
     let query = supabase
       .from('tasks')
-      .select('*, task_assignees(user_id), task_completion_requests(id, requester_id, request_note, status, created_at), task_tags(tag_id)')
+      .select('*, task_assignees(user_id), task_completion_requests(id, requester_id, request_note, status, created_at), task_tags(tag_id), task_checklist_items(id, text, done, position)')
       .order('created_at', { ascending: false });
     if (scope === 'personal') {
       query = query.eq('owner_id', userId).is('room_id', null);
@@ -93,6 +95,10 @@ export default function BoardBody({
         assignees: (t.task_assignees || []).map((a) => a.user_id),
         pendingRequests: (t.task_completion_requests || []).filter(r => r.status === 'pending'),
         tagIds: (t.task_tags || []).map((tt) => tt.tag_id),
+        checklist: (t.task_checklist_items || [])
+          .slice()
+          .sort((a, b) => a.position - b.position || a.id.localeCompare(b.id))
+          .map((it) => ({ id: it.id, text: it.text, done: it.done })),
       }));
       setTasks(flat);
     }
@@ -151,16 +157,27 @@ export default function BoardBody({
   // Realtime: task_tags — назначения тегов меняются (owner добавил/убрал из задачи,
   // либо тег был удалён на уровне БД, что каскадно удаляет связи).
   useEffect(() => {
-    if (!isRoom) return;
     const channel = supabase
-      .channel(`task-tags-${roomId}`)
+      .channel(`task-tags-${scope}-${roomId || userId}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'task_tags' },
         () => loadTasks()
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [isRoom, roomId, loadTasks]);
+  }, [scope, roomId, userId, loadTasks]);
+
+  // Realtime: task_checklist_items
+  useEffect(() => {
+    const channel = supabase
+      .channel(`task-checklist-${scope}-${roomId || userId}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'task_checklist_items' },
+        () => loadTasks()
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [scope, roomId, userId, loadTasks]);
 
   const quadrants = [
     { important: true, urgent: true, title: 'Важно и срочно' },
@@ -173,7 +190,7 @@ export default function BoardBody({
   const completedTasks = tasks.filter(t => t.done);
 
   const openAdd = () => {
-    setFormData({ title: '', description: '', important: true, urgent: true, due_at: '', assignees: [], tags: [] });
+    setFormData({ title: '', description: '', important: true, urgent: true, due_at: '', assignees: [], tags: [], checklist: [] });
     setEditingTask(null);
     setShowAddModal(true);
   };
@@ -187,6 +204,7 @@ export default function BoardBody({
       due_at: isoToLocalInput(task.due_at),
       assignees: task.assignees || [],
       tags: task.tagIds || [],
+      checklist: (task.checklist || []).map((it) => ({ id: it.id, text: it.text, done: it.done })),
     });
     setEditingTask(task);
     setSelectedTask(null);
@@ -205,12 +223,37 @@ export default function BoardBody({
 
   // Синхронизация тегов задачи
   const syncTags = async (taskId, newTagIds) => {
-    if (!isRoom) return;
     await supabase.from('task_tags').delete().eq('task_id', taskId);
     if (newTagIds.length > 0) {
       const rows = newTagIds.map((tagId) => ({ task_id: taskId, tag_id: tagId }));
       await supabase.from('task_tags').insert(rows);
     }
+  };
+
+  // Синхронизация пунктов чеклиста: полная замена.
+  const syncChecklist = async (taskId, items) => {
+    await supabase.from('task_checklist_items').delete().eq('task_id', taskId);
+    const rows = items
+      .map((it, idx) => ({ text: (it.text || '').trim(), done: !!it.done, position: idx }))
+      .filter((it) => it.text.length > 0)
+      .slice(0, MAX_CHECKLIST_ITEMS)
+      .map((r) => ({ task_id: taskId, ...r }));
+    if (rows.length > 0) {
+      await supabase.from('task_checklist_items').insert(rows);
+    }
+  };
+
+  // Переключение одного пункта чеклиста прямо из модалки деталей.
+  const toggleChecklistItem = async (itemId, nextDone) => {
+    setSelectedTask((prev) => prev ? {
+      ...prev,
+      checklist: (prev.checklist || []).map((it) => it.id === itemId ? { ...it, done: nextDone } : it),
+    } : prev);
+    setTasks((prev) => prev.map((t) => ({
+      ...t,
+      checklist: (t.checklist || []).map((it) => it.id === itemId ? { ...it, done: nextDone } : it),
+    })));
+    await supabase.from('task_checklist_items').update({ done: nextDone }).eq('id', itemId);
   };
 
   const save = async () => {
@@ -232,7 +275,8 @@ export default function BoardBody({
         .single();
       if (!error && data) {
         if (canAssign) await syncAssignees(data.id, formData.assignees);
-        if (isRoom && canEdit) await syncTags(data.id, formData.tags);
+        if (canEdit) await syncTags(data.id, formData.tags);
+        if (canEdit) await syncChecklist(data.id, formData.checklist);
         await loadTasks();
       }
     } else {
@@ -248,7 +292,8 @@ export default function BoardBody({
       const { data, error } = await supabase.from('tasks').insert(payload).select().single();
       if (!error && data) {
         if (canAssign) await syncAssignees(data.id, formData.assignees);
-        if (isRoom && canEdit) await syncTags(data.id, formData.tags);
+        if (canEdit) await syncTags(data.id, formData.tags);
+        if (canEdit) await syncChecklist(data.id, formData.checklist);
         await loadTasks();
       }
     }
@@ -485,6 +530,16 @@ export default function BoardBody({
                         {getTaskTags(task).map((tag) => (
                           <Tag key={tag.id} tag={tag} size="xs" />
                         ))}
+                        {(task.checklist || []).length > 0 && (() => {
+                          const total = task.checklist.length;
+                          const done = task.checklist.filter((it) => it.done).length;
+                          const complete = done === total;
+                          return (
+                            <div className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded ${complete ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+                              <ListChecks size={10} /> {done}/{total}
+                            </div>
+                          );
+                        })()}
                         {task.due_at && (
                           <div className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded ${dueClasses}`}>
                             <Calendar size={10} /> {formatDue(task.due_at)}
@@ -547,7 +602,7 @@ export default function BoardBody({
                 ? <LinkifiedText text={selectedTask.description} />
                 : <span className="text-gray-400">Описание не указано</span>}
             </p>
-            {isRoom && getTaskTags(selectedTask).length > 0 && (
+            {getTaskTags(selectedTask).length > 0 && (
               <div className="mt-4 pt-4 border-t border-gray-100">
                 <p className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
                   <TagIcon size={12} /> Теги
@@ -557,6 +612,40 @@ export default function BoardBody({
                     <Tag key={tag.id} tag={tag} />
                   ))}
                 </div>
+              </div>
+            )}
+            {(selectedTask.checklist || []).length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                {(() => {
+                  const items = selectedTask.checklist || [];
+                  const done = items.filter((it) => it.done).length;
+                  return (
+                    <>
+                      <p className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
+                        <ListChecks size={12} /> Чеклист · {done}/{items.length}
+                      </p>
+                      <div className="space-y-1.5">
+                        {items.map((it) => (
+                          <label
+                            key={it.id}
+                            className={`flex items-start gap-2 px-2 py-1.5 rounded ${canEdit ? 'hover:bg-gray-50 cursor-pointer' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={it.done}
+                              disabled={!canEdit}
+                              onChange={(e) => toggleChecklistItem(it.id, e.target.checked)}
+                              className="w-4 h-4 mt-0.5 flex-shrink-0"
+                            />
+                            <span className={`text-sm flex-1 ${it.done ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                              {it.text}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
             {isRoom && (selectedTask.assignees || []).length > 0 && (
@@ -737,7 +826,7 @@ export default function BoardBody({
                 )}
               </div>
             </div>
-            {isRoom && canEdit && tags.length > 0 && (
+            {canEdit && tags.length > 0 && (
               <div>
                 <label className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
                   <TagIcon size={12} /> Теги (необязательно)
@@ -765,6 +854,71 @@ export default function BoardBody({
                     );
                   })}
                 </div>
+              </div>
+            )}
+            {canEdit && (
+              <div>
+                <label className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
+                  <ListChecks size={12} /> Чеклист (необязательно · до {MAX_CHECKLIST_ITEMS} пунктов)
+                </label>
+                {formData.checklist.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, checklist: [{ text: '', done: false }] })}
+                    className="w-full px-3 py-2 text-sm border border-dashed border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 flex items-center justify-center gap-2"
+                  >
+                    <Plus size={14} /> Включить чеклист
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    {formData.checklist.map((it, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={it.done}
+                          onChange={(e) => {
+                            const next = [...formData.checklist];
+                            next[idx] = { ...next[idx], done: e.target.checked };
+                            setFormData({ ...formData, checklist: next });
+                          }}
+                          className="w-4 h-4 flex-shrink-0"
+                        />
+                        <input
+                          type="text"
+                          value={it.text}
+                          placeholder={`Пункт ${idx + 1}`}
+                          maxLength={200}
+                          onChange={(e) => {
+                            const next = [...formData.checklist];
+                            next[idx] = { ...next[idx], text: e.target.value };
+                            setFormData({ ...formData, checklist: next });
+                          }}
+                          className={`flex-1 min-w-0 px-3 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:border-gray-900 ${it.done ? 'line-through text-gray-400' : ''}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = formData.checklist.filter((_, i) => i !== idx);
+                            setFormData({ ...formData, checklist: next });
+                          }}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded flex-shrink-0"
+                          aria-label="Удалить пункт"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, checklist: [...formData.checklist, { text: '', done: false }] })}
+                      disabled={formData.checklist.length >= MAX_CHECKLIST_ITEMS}
+                      className="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                    >
+                      <Plus size={12} /> Добавить пункт
+                      {formData.checklist.length >= MAX_CHECKLIST_ITEMS && ` (максимум ${MAX_CHECKLIST_ITEMS})`}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
             {canAssign && members.length > 0 && (

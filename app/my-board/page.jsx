@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import Navbar from '@/components/Navbar';
-import BoardBody from '@/components/BoardBody';
+import MyBoardClient from '@/components/MyBoardClient';
 
 export default async function MyBoardPage() {
   const supabase = await createClient();
@@ -27,7 +27,7 @@ export default async function MyBoardPage() {
           <h1 className="text-2xl font-semibold text-gray-900">Моя доска</h1>
           <p className="text-sm text-gray-500 mt-1">Личные задачи · видите только вы</p>
         </div>
-        <BoardBody scope="personal" userId={user.id} canEdit={true} />
+        <MyBoardClient userId={user.id} />
       </div>
     </>
   );
