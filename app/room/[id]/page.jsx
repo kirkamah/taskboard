@@ -25,22 +25,29 @@ export default async function RoomPage({ params }) {
     .select('user_id, role, joined_at')
     .eq('room_id', id);
 
-  // Получаем имена участников
+  // Получаем профили участников (имя + аватар)
   const userIds = (members || []).map(m => m.user_id);
   const { data: profilesData } = await supabase
     .from('profiles')
-    .select('id, display_name')
+    .select('id, display_name, avatar_emoji, avatar_color')
     .in('id', userIds.length > 0 ? userIds : ['00000000-0000-0000-0000-000000000000']);
 
   const profilesMap = {};
-  (profilesData || []).forEach(p => { profilesMap[p.id] = p.display_name; });
+  (profilesData || []).forEach(p => {
+    profilesMap[p.id] = {
+      display_name: p.display_name,
+      avatar_emoji: p.avatar_emoji,
+      avatar_color: p.avatar_color,
+    };
+  });
 
-  // Имя текущего пользователя для навбара
-  const userName = profilesMap[user.id] || user.email.split('@')[0];
+  // Профиль текущего пользователя для навбара
+  const currentProfile = profilesMap[user.id] || null;
+  const userName = currentProfile?.display_name || user.email.split('@')[0];
 
   return (
     <>
-      <Navbar userName={userName} userId={user.id} />
+      <Navbar userName={userName} userId={user.id} userProfile={currentProfile} />
       <RoomClient
         room={room}
         initialMembers={members || []}

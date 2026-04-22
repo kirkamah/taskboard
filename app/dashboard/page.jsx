@@ -8,7 +8,7 @@ export default async function DashboardPage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name')
+    .select('display_name, avatar_emoji, avatar_color')
     .eq('id', user.id)
     .single();
 
@@ -16,7 +16,7 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <Navbar userName={userName} userId={user.id} />
+      <Navbar userName={userName} userId={user.id} userProfile={profile} />
       <DashboardClient userName={userName} />
     </>
   );

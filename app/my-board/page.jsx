@@ -10,7 +10,7 @@ export default async function MyBoardPage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name')
+    .select('display_name, avatar_emoji, avatar_color')
     .eq('id', user.id)
     .single();
 
@@ -18,7 +18,7 @@ export default async function MyBoardPage() {
 
   return (
     <>
-      <Navbar userName={userName} userId={user.id} />
+      <Navbar userName={userName} userId={user.id} userProfile={profile} />
       <div className="max-w-7xl mx-auto px-6 py-6">
         <Link href="/dashboard" className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1 mb-2">
           <ArrowLeft size={16} /> На главную

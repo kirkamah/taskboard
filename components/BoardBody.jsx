@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus, MessageSquare, Send } from 'lucide-react';
 import { Modal, Toggle } from './UI';
 import LinkifiedText from './LinkifiedText';
+import Avatar from './Avatar';
 import { createClient } from '@/lib/supabase/client';
 
 /**
@@ -15,7 +16,7 @@ import { createClient } from '@/lib/supabase/client';
  *  - userId (текущий пользователь)
  *  - canEdit (bool): можно ли редактировать задачи (для наблюдателей — false)
  *  - members (только для 'room'): [{ user_id, role }, ...]
- *  - profiles (только для 'room'): { user_id: display_name, ... }
+ *  - profiles (только для 'room'): { user_id: { display_name, avatar_emoji, avatar_color }, ... }
  *  - currentUserRole (только для 'room'): 'owner' | 'editor' | 'viewer'
  *      Назначать на задачи может только owner.
  */
@@ -312,19 +313,8 @@ export default function BoardBody({
     return 'text-gray-600 bg-gray-50 border-gray-200';
   };
 
-  // Аватарка пользователя — кружок с первой буквой и tooltip с именем
-  const Avatar = ({ uid }) => {
-    const name = profiles[uid] || 'Пользователь';
-    const initial = (name.trim()[0] || '?').toUpperCase();
-    return (
-      <div
-        className="w-6 h-6 rounded-full bg-gray-200 border border-white flex items-center justify-center text-xs font-medium text-gray-700"
-        title={name}
-      >
-        {initial}
-      </div>
-    );
-  };
+  const getName = (uid) => profiles[uid]?.display_name || 'Пользователь';
+  const getProfile = (uid) => profiles[uid] || null;
 
   if (loading) {
     return <p className="text-sm text-gray-500 text-center py-8">Загрузка задач...</p>;
@@ -377,12 +367,12 @@ export default function BoardBody({
                           {(task.assignees || []).length > 0 && (
                             <div className="flex -space-x-1">
                               {task.assignees.slice(0, 3).map((uid) => (
-                                <Avatar key={uid} uid={uid} />
+                                <Avatar key={uid} profile={getProfile(uid)} />
                               ))}
                               {task.assignees.length > 3 && (
                                 <div
                                   className="w-6 h-6 rounded-full bg-gray-100 border border-white flex items-center justify-center text-xs text-gray-600"
-                                  title={task.assignees.slice(3).map((u) => profiles[u] || 'Пользователь').join(', ')}
+                                  title={task.assignees.slice(3).map((u) => getName(u)).join(', ')}
                                 >
                                   +{task.assignees.length - 3}
                                 </div>
@@ -462,8 +452,8 @@ export default function BoardBody({
                 <div className="flex flex-wrap gap-2">
                   {selectedTask.assignees.map((uid) => (
                     <div key={uid} className="flex items-center gap-2 border border-gray-200 rounded-full pl-1 pr-3 py-0.5">
-                      <Avatar uid={uid} />
-                      <span className="text-sm text-gray-700">{profiles[uid] || 'Пользователь'}</span>
+                      <Avatar profile={getProfile(uid)} />
+                      <span className="text-sm text-gray-700">{getName(uid)}</span>
                     </div>
                   ))}
                 </div>
@@ -479,10 +469,10 @@ export default function BoardBody({
                   {selectedTask.pendingRequests.map((req) => (
                     <div key={req.id} className="border border-blue-200 bg-blue-50/40 rounded-md p-3">
                       <div className="flex items-start gap-2 mb-2">
-                        <Avatar uid={req.requester_id} />
+                        <Avatar profile={getProfile(req.requester_id)} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-900">
-                            {profiles[req.requester_id] || 'Пользователь'}
+                            {getName(req.requester_id)}
                           </p>
                           <p className="text-xs text-gray-500">{formatDue(req.created_at) || ''}</p>
                         </div>
@@ -632,7 +622,7 @@ export default function BoardBody({
                 <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto">
                   {members.map((m) => {
                     const checked = formData.assignees.includes(m.user_id);
-                    const name = profiles[m.user_id] || 'Пользователь';
+                    const name = getName(m.user_id);
                     return (
                       <label
                         key={m.user_id}
@@ -649,7 +639,7 @@ export default function BoardBody({
                           }}
                           className="w-4 h-4"
                         />
-                        <Avatar uid={m.user_id} />
+                        <Avatar profile={getProfile(m.user_id)} />
                         <span className="text-sm text-gray-800 flex-1">{name}</span>
                         <span className="text-xs text-gray-400">
                           {m.role === 'owner' ? 'Владелец' : m.role === 'editor' ? 'Помощник' : 'Зритель'}

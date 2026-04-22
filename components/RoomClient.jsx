@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Users, Copy, Eye, Shield, Crown, Trash2, Edit2, UserCheck, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import BoardBody from '@/components/BoardBody';
+import Avatar from '@/components/Avatar';
 import { Modal } from '@/components/UI';
 
 function RoleBadge({ role }) {
@@ -47,7 +48,8 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
   const canEdit = myRole === 'owner' || myRole === 'editor';
   const canManage = myRole === 'owner';
 
-  const getName = (uid) => profiles[uid] || 'Пользователь';
+  const getName = (uid) => profiles[uid]?.display_name || 'Пользователь';
+  const getProfile = (uid) => profiles[uid] || null;
 
   // Realtime: подписка на изменения состава участников
   useEffect(() => {
@@ -58,9 +60,20 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
         async (payload) => {
           if (payload.eventType === 'INSERT') {
             setMembers(prev => prev.some(m => m.user_id === payload.new.user_id) ? prev : [...prev, payload.new]);
-            // Подгружаем имя нового участника
-            const { data } = await supabase.from('profiles').select('id, display_name').eq('id', payload.new.user_id).single();
-            if (data) setProfiles(prev => ({ ...prev, [data.id]: data.display_name }));
+            // Подгружаем профиль нового участника
+            const { data } = await supabase
+              .from('profiles')
+              .select('id, display_name, avatar_emoji, avatar_color')
+              .eq('id', payload.new.user_id)
+              .single();
+            if (data) setProfiles(prev => ({
+              ...prev,
+              [data.id]: {
+                display_name: data.display_name,
+                avatar_emoji: data.avatar_emoji,
+                avatar_color: data.avatar_color,
+              },
+            }));
           } else if (payload.eventType === 'UPDATE') {
             setMembers(prev => prev.map(m => m.user_id === payload.new.user_id ? payload.new : m));
           } else if (payload.eventType === 'DELETE') {
@@ -378,7 +391,6 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
                 <div className="space-y-1 max-h-60 overflow-y-auto">
                   {members.filter(m => m.user_id !== userId).map((m) => {
                     const name = getName(m.user_id);
-                    const initial = (name.trim()[0] || '?').toUpperCase();
                     const selected = transferRecipient === m.user_id;
                     const roleLabel = m.role === 'editor' ? 'Помощник' : m.role === 'viewer' ? 'Зритель' : m.role;
                     return (
@@ -387,9 +399,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
                         onClick={() => setTransferRecipient(m.user_id)}
                         className={`w-full flex items-center gap-3 px-3 py-2 border rounded-lg text-left ${selected ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
                       >
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0 ${selected ? 'bg-white text-gray-900' : 'bg-gray-200 text-gray-700'}`}>
-                          {initial}
-                        </div>
+                        <Avatar profile={getProfile(m.user_id)} size={28} />
                         <span className="text-sm flex-1 truncate">{name}</span>
                         <span className={`text-xs ${selected ? 'text-gray-300' : 'text-gray-500'}`}>{roleLabel}</span>
                       </button>
