@@ -54,6 +54,11 @@ export default function LoginPage() {
               minLength={6}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900"
             />
+            <div className="mt-2 text-right">
+              <Link href="/forgot-password" className="text-xs text-gray-500 hover:text-gray-900 hover:underline">
+                Забыли пароль?
+              </Link>
+            </div>
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <button
