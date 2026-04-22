@@ -37,6 +37,8 @@ export default function BoardBody({
   const [editingTask, setEditingTask] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [draggingTaskId, setDraggingTaskId] = useState(null);
+  const [dragOverQuadrant, setDragOverQuadrant] = useState(null);
   // Модалка для работы с запросами на выполнение:
   //   { mode: 'create', taskId } — отправка запроса назначенным
   //   { mode: 'respond', requestId, action: 'approve'|'reject' } — ответ владельца/редактора
@@ -223,6 +225,16 @@ export default function BoardBody({
     setEditingTask(null);
   };
 
+  const moveTaskToQuadrant = async (taskId, important, urgent) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task || (task.important === important && task.urgent === urgent)) return;
+    setTasks((prev) => prev.map(t => t.id === taskId ? { ...t, important, urgent } : t));
+    const { error } = await supabase.from('tasks').update({ important, urgent }).eq('id', taskId);
+    if (error) {
+      await loadTasks();
+    }
+  };
+
   const del = async (id) => {
     await supabase.from('tasks').delete().eq('id', id);
     setTasks((prev) => prev.filter(t => t.id !== id));
@@ -345,8 +357,22 @@ export default function BoardBody({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {quadrants.map((q, idx) => {
           const qTasks = getTasksFor(q.important, q.urgent);
+          const isDragOver = dragOverQuadrant === idx;
           return (
-            <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4 min-h-[240px]">
+            <div
+              key={idx}
+              onDragOver={(e) => { if (canEdit && draggingTaskId) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } }}
+              onDragEnter={(e) => { if (canEdit && draggingTaskId) { e.preventDefault(); setDragOverQuadrant(idx); } }}
+              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverQuadrant((cur) => cur === idx ? null : cur); }}
+              onDrop={(e) => {
+                if (!canEdit || !draggingTaskId) return;
+                e.preventDefault();
+                moveTaskToQuadrant(draggingTaskId, q.important, q.urgent);
+                setDragOverQuadrant(null);
+                setDraggingTaskId(null);
+              }}
+              className={`bg-white border rounded-lg p-4 min-h-[240px] transition-colors ${isDragOver ? 'border-gray-900 border-2 bg-gray-50' : 'border-gray-200'}`}
+            >
               <div className="flex items-baseline justify-between mb-3 pb-3 border-b border-gray-100">
                 <h2 className="font-semibold text-gray-900">{q.title}</h2>
                 <span className="text-xs text-gray-400">{qTasks.length}</span>
@@ -355,11 +381,20 @@ export default function BoardBody({
                 {qTasks.length === 0 && <p className="text-xs text-gray-400 text-center py-6">Пусто</p>}
                 {qTasks.map(task => {
                   const dueClasses = getDueClasses(task.due_at, task.done);
+                  const isDragging = draggingTaskId === task.id;
                   return (
                     <div
                       key={task.id}
-                      onClick={() => setSelectedTask(task)}
-                      className="group border border-gray-200 rounded-md p-3 hover:border-gray-400 hover:shadow-sm cursor-pointer bg-white transition-all"
+                      draggable={canEdit}
+                      onDragStart={(e) => {
+                        if (!canEdit) return;
+                        setDraggingTaskId(task.id);
+                        e.dataTransfer.effectAllowed = 'move';
+                        try { e.dataTransfer.setData('text/plain', task.id); } catch {}
+                      }}
+                      onDragEnd={() => { setDraggingTaskId(null); setDragOverQuadrant(null); }}
+                      onClick={() => { if (!draggingTaskId) setSelectedTask(task); }}
+                      className={`group border border-gray-200 rounded-md p-3 hover:border-gray-400 hover:shadow-sm bg-white transition-all ${canEdit ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${isDragging ? 'opacity-40' : ''}`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="text-sm font-medium text-gray-900 line-clamp-2 flex-1">{task.title}</h3>
