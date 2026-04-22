@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Users, Copy, Eye, Shield, Crown, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Users, Copy, Eye, Shield, Crown, Trash2, Edit2, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import BoardBody from '@/components/BoardBody';
 import { Modal } from '@/components/UI';
@@ -26,6 +26,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
   const router = useRouter();
   const supabase = createClient();
 
+  const [roomName, setRoomName] = useState(room.name);
   const [members, setMembers] = useState(initialMembers);
   const [profiles, setProfiles] = useState(initialProfiles);
   const [showMembers, setShowMembers] = useState(true);
@@ -33,6 +34,9 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmText, setConfirmText] = useState('');
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [renameText, setRenameText] = useState('');
+  const [renaming, setRenaming] = useState(false);
 
   const myRole = members.find(m => m.user_id === userId)?.role;
   const canEdit = myRole === 'owner' || myRole === 'editor';
@@ -63,6 +67,12 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
           }
         }
       )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${room.id}` },
+        (payload) => {
+          if (payload.new?.name) setRoomName(payload.new.name);
+        }
+      )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [room.id, userId]);
@@ -81,8 +91,25 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
     router.push('/dashboard');
   };
 
+  const renameRoom = async () => {
+    const trimmed = renameText.trim();
+    if (!trimmed || trimmed === roomName) {
+      setShowRenameModal(false);
+      return;
+    }
+    setRenaming(true);
+    const { error } = await supabase.from('rooms').update({ name: trimmed }).eq('id', room.id);
+    setRenaming(false);
+    if (error) {
+      alert('Не удалось переименовать комнату: ' + error.message);
+      return;
+    }
+    setRoomName(trimmed);
+    setShowRenameModal(false);
+  };
+
   const deleteRoom = async () => {
-    if (confirmText.trim() !== room.name) return;
+    if (confirmText.trim() !== roomName) return;
     setDeleting(true);
     const { error } = await supabase.from('rooms').delete().eq('id', room.id);
     if (error) {
@@ -101,7 +128,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
           <Link href="/dashboard" className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1 mb-2">
             <ArrowLeft size={16} /> На главную
           </Link>
-          <h1 className="text-2xl font-semibold text-gray-900">{room.name}</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">{roomName}</h1>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             <span className="text-sm text-gray-500">Код:</span>
             <span className="font-mono text-sm px-2 py-1 bg-gray-100 border border-gray-200 rounded">{room.code}</span>
@@ -127,12 +154,20 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
             </button>
           )}
           {canManage && (
-            <button
-              onClick={() => { setShowDeleteModal(true); setConfirmText(''); }}
-              className="px-4 py-2 text-sm border border-red-300 text-red-600 rounded-lg bg-white hover:bg-red-50 flex items-center gap-2"
-            >
-              <Trash2 size={16} /> Удалить комнату
-            </button>
+            <>
+              <button
+                onClick={() => { setShowRenameModal(true); setRenameText(roomName); }}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-100 flex items-center gap-2"
+              >
+                <Edit2 size={16} /> Переименовать
+              </button>
+              <button
+                onClick={() => { setShowDeleteModal(true); setConfirmText(''); }}
+                className="px-4 py-2 text-sm border border-red-300 text-red-600 rounded-lg bg-white hover:bg-red-50 flex items-center gap-2"
+              >
+                <Trash2 size={16} /> Удалить комнату
+              </button>
+            </>
           )}
           <button
             onClick={() => setShowMembers(!showMembers)}
@@ -214,7 +249,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
           </div>
           <div className="p-6 space-y-3">
             <p className="text-sm text-gray-700">
-              Вы собираетесь навсегда удалить комнату <span className="font-semibold">«{room.name}»</span>.
+              Вы собираетесь навсегда удалить комнату <span className="font-semibold">«{roomName}»</span>.
             </p>
             <p className="text-sm text-gray-700">
               Все задачи в комнате и список участников будут безвозвратно удалены. Личные доски участников не пострадают.
@@ -224,7 +259,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
-                Для подтверждения введите название комнаты: <span className="font-mono normal-case">{room.name}</span>
+                Для подтверждения введите название комнаты: <span className="font-mono normal-case">{roomName}</span>
               </label>
               <input
                 type="text"
@@ -244,10 +279,48 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
             </button>
             <button
               onClick={deleteRoom}
-              disabled={confirmText.trim() !== room.name || deleting}
+              disabled={confirmText.trim() !== roomName || deleting}
               className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
             >
               {deleting ? 'Удаляем...' : 'Удалить навсегда'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {showRenameModal && (
+        <Modal onClose={() => setShowRenameModal(false)}>
+          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Переименовать комнату</h2>
+            <button onClick={() => setShowRenameModal(false)} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
+          </div>
+          <div className="p-6">
+            <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
+              Новое название
+            </label>
+            <input
+              type="text"
+              value={renameText}
+              onChange={(e) => setRenameText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') renameRoom(); }}
+              placeholder={roomName}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900"
+              autoFocus
+            />
+          </div>
+          <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+            <button
+              onClick={() => setShowRenameModal(false)}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
+            >
+              Отмена
+            </button>
+            <button
+              onClick={renameRoom}
+              disabled={!renameText.trim() || renameText.trim() === roomName || renaming}
+              className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              {renaming ? 'Сохраняем...' : 'Сохранить'}
             </button>
           </div>
         </Modal>
