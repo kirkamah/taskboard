@@ -11,8 +11,8 @@ import { Modal } from '@/components/UI';
 function RoleBadge({ role }) {
   const config = {
     owner: { label: 'Владелец', Icon: Crown, classes: 'bg-gray-900 text-white border-gray-900' },
-    editor: { label: 'Редактор', Icon: Shield, classes: 'bg-white text-gray-900 border-gray-400' },
-    viewer: { label: 'Наблюдатель', Icon: Eye, classes: 'bg-white text-gray-500 border-gray-300' }
+    editor: { label: 'Помощник', Icon: Shield, classes: 'bg-white text-gray-900 border-gray-400' },
+    viewer: { label: 'Зритель', Icon: Eye, classes: 'bg-white text-gray-500 border-gray-300' }
   }[role];
   const { Icon } = config;
   return (
@@ -179,7 +179,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
                             onClick={() => updateRole(m.user_id, 'editor')}
                             className="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 flex items-center gap-1"
                           >
-                            <Shield size={10} /> Редактор
+                            <Shield size={10} /> Помощник
                           </button>
                         )}
                         {m.role === 'editor' && (
@@ -187,7 +187,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
                             onClick={() => updateRole(m.user_id, 'viewer')}
                             className="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 flex items-center gap-1"
                           >
-                            <Eye size={10} /> Наблюдатель
+                            <Eye size={10} /> Зритель
                           </button>
                         )}
                         <button

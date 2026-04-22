@@ -79,8 +79,8 @@ export default function DashboardClient({ userName }) {
 
   const roleLabel = (role) => ({
     owner: 'Владелец',
-    editor: 'Редактор',
-    viewer: 'Наблюдатель'
+    editor: 'Помощник',
+    viewer: 'Зритель'
   }[role] || role);
 
   const closeCreateModal = () => {

@@ -41,7 +41,7 @@ export default async function TeamsPage() {
     };
   }));
 
-  const roleLabel = { owner: 'Владелец', editor: 'Редактор', viewer: 'Наблюдатель' };
+  const roleLabel = { owner: 'Владелец', editor: 'Помощник', viewer: 'Зритель' };
 
   return (
     <>

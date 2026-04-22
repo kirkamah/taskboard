@@ -649,7 +649,7 @@ export default function BoardBody({
                         <Avatar uid={m.user_id} />
                         <span className="text-sm text-gray-800 flex-1">{name}</span>
                         <span className="text-xs text-gray-400">
-                          {m.role === 'owner' ? 'Владелец' : m.role === 'editor' ? 'Редактор' : 'Наблюдатель'}
+                          {m.role === 'owner' ? 'Владелец' : m.role === 'editor' ? 'Помощник' : 'Зритель'}
                         </span>
                       </label>
                     );
@@ -681,7 +681,7 @@ export default function BoardBody({
           </div>
           <div className="p-6 space-y-3">
             <p className="text-sm text-gray-600">
-              {requestModal.mode === 'create' && 'Владелец и редакторы комнаты получат уведомление. Можете добавить комментарий (необязательно).'}
+              {requestModal.mode === 'create' && 'Владелец и помощники комнаты получат уведомление. Можете добавить комментарий (необязательно).'}
               {requestModal.mode === 'respond' && requestModal.action === 'approve' && 'Задача будет отмечена выполненной. Отправитель получит уведомление.'}
               {requestModal.mode === 'respond' && requestModal.action === 'reject' && 'Запрос будет отклонён. Отправитель получит уведомление.'}
             </p>
