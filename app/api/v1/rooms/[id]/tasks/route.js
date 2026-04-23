@@ -1,5 +1,5 @@
 import { authenticateApiRequest, apiError, apiOk } from '@/lib/apiAuth';
-import { getMyRoomRole, canWriteWithRole, serializeTask } from '@/lib/apiAccess';
+import { getMyRoomRole, getMyRoomMember, canCreateRoomTask, serializeTask } from '@/lib/apiAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,9 +48,9 @@ export async function POST(request, { params }) {
   if (auth.error) return auth.error;
   const { supabase, userId, keyId } = auth;
 
-  const role = await getMyRoomRole(supabase, params.id, userId);
-  if (!role) return apiError(404, 'not_found', 'Room not found');
-  if (!canWriteWithRole(role)) return apiError(403, 'forbidden', 'Viewers cannot create tasks in this room');
+  const member = await getMyRoomMember(supabase, params.id, userId);
+  if (!member) return apiError(404, 'not_found', 'Room not found');
+  if (!canCreateRoomTask(member)) return apiError(403, 'forbidden', 'You do not have permission to create tasks in this room');
 
   let body;
   try { body = await request.json(); } catch {

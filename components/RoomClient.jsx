@@ -13,7 +13,7 @@ import Avatar from '@/components/Avatar';
 import TagsPanel from '@/components/TagsPanel';
 import RoleEditor from '@/components/RoleEditor';
 import { Modal } from '@/components/UI';
-import { memberPermissions, hasPerm } from '@/lib/permissions';
+import { enrichMember, hasPermission } from '@/lib/permissions';
 
 // Text-contrast helper so colored chips stay readable on light/dark backgrounds.
 function pickTextColor(hex) {
@@ -107,14 +107,17 @@ export default function RoomClient({ room, initialMembers, initialProfiles, init
   const [roleSubmenuOpen, setRoleSubmenuOpen] = useState(false);
 
   const rolesById = roles.reduce((acc, r) => { acc[r.id] = r; return acc; }, {});
-  const me = members.find(m => m.user_id === userId) || null;
-  const { isOwner, perms } = memberPermissions(me, rolesById);
-  const canManage = isOwner; // owner-only: rename+private toggle, transfer, delete, ban
-  const canSeeRequests = hasPerm(perms, 'manage_join_requests');
-  const canManageRoles = isOwner || hasPerm(perms, 'manage_roles');
-  const canManageRoomSettings = isOwner || hasPerm(perms, 'manage_room_settings');
-  const canKick = hasPerm(perms, 'kick_members');
-  const canManageTags = hasPerm(perms, 'manage_tags');
+  const enrichedMembers = members.map((m) => enrichMember(m, rolesById));
+  const me = enrichedMembers.find((m) => m.user_id === userId) || null;
+  const isOwner = me?.role === 'owner';
+  // Owner-exclusive capabilities (NOT gated through permissions per spec):
+  // delete room, transfer ownership, ban/unban.
+  const canManage = isOwner;
+  const canSeeRequests = hasPermission(me, 'manage_join_requests');
+  const canManageRoles = hasPermission(me, 'manage_roles');
+  const canManageRoomSettings = hasPermission(me, 'manage_room_settings');
+  const canKick = hasPermission(me, 'kick_members');
+  const canManageTags = hasPermission(me, 'manage_tags');
   const canOpenSettings = canManage || canManageRoles || canManageRoomSettings;
 
   const getName = (uid) => profiles[uid]?.display_name || 'Пользователь';
@@ -508,8 +511,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, init
             userId={userId}
             members={members}
             profiles={profiles}
-            perms={perms}
-            isRoomOwner={isOwner}
+            myMember={me}
             tags={tags}
           />
         </div>

@@ -63,14 +63,14 @@ export async function GET(request) {
             name: { type: 'string' },
             owner_id: { type: 'string', format: 'uuid' },
             created_at: { type: 'string', format: 'date-time' },
-            my_role: { type: ['string', 'null'], enum: ['owner', 'editor', 'viewer', null] }
+            my_role: { type: ['string', 'null'], enum: ['owner', 'member', 'editor', 'viewer', null] }
           }
         },
         Member: {
           type: 'object',
           properties: {
             user_id: { type: 'string', format: 'uuid' },
-            role: { type: 'string', enum: ['owner', 'editor', 'viewer'] },
+            role: { type: 'string', enum: ['owner', 'member', 'editor', 'viewer'] },
             joined_at: { type: 'string', format: 'date-time' },
             display_name: { type: ['string', 'null'] },
             avatar_emoji: { type: ['string', 'null'] },

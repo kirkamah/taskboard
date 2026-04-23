@@ -1,20 +1,20 @@
 import { authenticateApiRequest, apiError, apiOk } from '@/lib/apiAuth';
-import { loadReadableTask, canWriteWithRole, serializeTask } from '@/lib/apiAccess';
+import { loadReadableTaskForWrite, canEditTask, serializeTask } from '@/lib/apiAccess';
 
 export const dynamic = 'force-dynamic';
 
 // POST /api/v1/tasks/:id/complete — convenience endpoint that sets done=true.
-// Viewers in a room cannot mark tasks complete via the API (403), matching the
-// UI's rule. If they want to "ask" for completion, that is a separate flow
-// (task_completion_requests) that v1 does not expose.
+// Callers without edit_any_task (e.g. 'Зритель' role) cannot mark tasks
+// complete via the API (403). If they want to "ask" for completion, that is
+// a separate flow (task_completion_requests) that v1 does not expose.
 export async function POST(request, { params }) {
   const auth = await authenticateApiRequest(request);
   if (auth.error) return auth.error;
   const { supabase, userId } = auth;
 
-  const { task, role } = await loadReadableTask(supabase, params.id, userId);
+  const { task, member } = await loadReadableTaskForWrite(supabase, params.id, userId);
   if (!task) return apiError(404, 'not_found', 'Task not found');
-  if (!canWriteWithRole(role)) return apiError(403, 'forbidden', 'Viewers cannot mark tasks complete');
+  if (!canEditTask(member)) return apiError(403, 'forbidden', 'You do not have permission to mark this task complete');
 
   if (task.done) {
     return apiOk({ task: { ...task, done: true } });

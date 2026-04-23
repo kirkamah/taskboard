@@ -1,5 +1,5 @@
 import { authenticateApiRequest, apiError, apiOk } from '@/lib/apiAuth';
-import { loadReadableTask, canWriteWithRole, serializeTask } from '@/lib/apiAccess';
+import { loadReadableTask, loadReadableTaskForWrite, canEditTask, canDeleteTask, serializeTask } from '@/lib/apiAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,9 +23,9 @@ export async function PATCH(request, { params }) {
     return apiError(400, 'invalid_json', 'Request body must be valid JSON');
   }
 
-  const { task, role } = await loadReadableTask(supabase, params.id, userId);
+  const { task, member } = await loadReadableTaskForWrite(supabase, params.id, userId);
   if (!task) return apiError(404, 'not_found', 'Task not found');
-  if (!canWriteWithRole(role)) return apiError(403, 'forbidden', 'You do not have permission to edit this task');
+  if (!canEditTask(member)) return apiError(403, 'forbidden', 'You do not have permission to edit this task');
 
   const patch = {};
   if (typeof body.title === 'string') {
@@ -65,9 +65,9 @@ export async function DELETE(request, { params }) {
   if (auth.error) return auth.error;
   const { supabase, userId } = auth;
 
-  const { task, role } = await loadReadableTask(supabase, params.id, userId);
+  const { task, member } = await loadReadableTaskForWrite(supabase, params.id, userId);
   if (!task) return apiError(404, 'not_found', 'Task not found');
-  if (!canWriteWithRole(role)) return apiError(403, 'forbidden', 'You do not have permission to delete this task');
+  if (!canDeleteTask(member)) return apiError(403, 'forbidden', 'You do not have permission to delete this task');
 
   const { error } = await supabase.from('tasks').delete().eq('id', task.id);
   if (error) return apiError(500, 'db_error', error.message);

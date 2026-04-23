@@ -1,5 +1,6 @@
 import { authenticateApiRequest, apiError, apiOk } from '@/lib/apiAuth';
-import { getMyRoomRole, serializeRoom } from '@/lib/apiAccess';
+import { getMyRoomRole, getMyRoomMember, serializeRoom } from '@/lib/apiAccess';
+import { hasPermission } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +37,10 @@ export async function PATCH(request, { params }) {
 
   const { room, role } = await loadRoomForUser(supabase, params.id, userId);
   if (!room) return apiError(404, 'not_found', 'Room not found');
-  if (role !== 'owner') return apiError(403, 'forbidden', 'Only the owner can rename a room');
+  const member = await getMyRoomMember(supabase, params.id, userId);
+  if (!hasPermission(member, 'manage_room_settings')) {
+    return apiError(403, 'forbidden', 'You do not have permission to rename this room');
+  }
 
   const name = typeof body.name === 'string' ? body.name.trim() : '';
   if (!name) return apiError(400, 'missing_name', 'name is required');

@@ -7,6 +7,7 @@ import LinkifiedText from './LinkifiedText';
 import Avatar from './Avatar';
 import Tag from './Tag';
 import { createClient } from '@/lib/supabase/client';
+import { hasPermission } from '@/lib/permissions';
 
 /**
  * BoardBody — универсальный компонент доски задач.
@@ -16,8 +17,8 @@ import { createClient } from '@/lib/supabase/client';
  *  - roomId (нужен если scope='room')
  *  - userId (текущий пользователь)
  *  - members, profiles (только для 'room')
- *  - perms (только для 'room'): объект разрешений текущего пользователя
- *  - isRoomOwner (только для 'room'): true если текущий пользователь — владелец
+ *  - myMember (только для 'room'): enriched room_members строка текущего
+ *      пользователя с прикреплённым role_data; в personal — null
  *  - tags: теги, доступные для привязки к задаче
  */
 export default function BoardBody({
@@ -26,8 +27,7 @@ export default function BoardBody({
   userId,
   members = [],
   profiles = {},
-  perms = null,
-  isRoomOwner = false,
+  myMember = null,
   tags = [],
 }) {
   const supabase = createClient();
@@ -60,17 +60,18 @@ export default function BoardBody({
 
   const isRoom = scope === 'room';
   const isPersonal = !isRoom;
-  // Personal boards let the user do everything to their own tasks; rooms
-  // rely on the permissions object computed by the parent.
-  const p = perms || {};
-  const canCreateTask = isPersonal || !!p.create_tasks;
-  const canEditTask = isPersonal || !!p.edit_any_task;
-  const canDeleteTask = isPersonal || !!p.delete_any_task;
-  const canAssign = isRoom && !!p.assign_members;
-  const canEditChecklist = isPersonal || !!p.manage_checklists;
-  const canApproveRequests = isRoom && !!p.approve_completion_requests;
-  // "Any write at all" — controls the footer layout of the task detail modal
-  // and whether Completed section shows action buttons.
+  // Personal boards: user owns every task → every toggle on. Room scope goes
+  // through hasPermission so legacy role='editor' / 'viewer' text values still
+  // resolve correctly even if role_data wasn't hydrated.
+  const isRoomOwner = isRoom && myMember?.role === 'owner';
+  const canCreateTask = isPersonal || hasPermission(myMember, 'create_tasks');
+  const canEditTask = isPersonal || hasPermission(myMember, 'edit_any_task');
+  const canDeleteTask = isPersonal || hasPermission(myMember, 'delete_any_task');
+  const canAssign = isRoom && hasPermission(myMember, 'assign_members');
+  const canEditChecklist = isPersonal || hasPermission(myMember, 'manage_checklists');
+  const canApproveRequests = isRoom && hasPermission(myMember, 'approve_completion_requests');
+  // "Any write at all" — controls the viewer message on the header and which
+  // footer shape the task detail modal uses.
   const canEdit = canCreateTask || canEditTask || canDeleteTask;
 
   // Конвертация: timestamptz из БД -> локальная строка для datetime-local input
