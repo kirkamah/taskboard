@@ -15,20 +15,19 @@ import { createClient } from '@/lib/supabase/client';
  *  - scope: 'personal' (личная доска) или 'room' (комната)
  *  - roomId (нужен если scope='room')
  *  - userId (текущий пользователь)
- *  - canEdit (bool): можно ли редактировать задачи (для наблюдателей — false)
- *  - members (только для 'room'): [{ user_id, role }, ...]
- *  - profiles (только для 'room'): { user_id: { display_name, avatar_emoji, avatar_color }, ... }
- *  - currentUserRole (только для 'room'): 'owner' | 'editor' | 'viewer'
- *      Назначать на задачи может только owner.
+ *  - members, profiles (только для 'room')
+ *  - perms (только для 'room'): объект разрешений текущего пользователя
+ *  - isRoomOwner (только для 'room'): true если текущий пользователь — владелец
+ *  - tags: теги, доступные для привязки к задаче
  */
 export default function BoardBody({
   scope,
   roomId,
   userId,
-  canEdit,
   members = [],
   profiles = {},
-  currentUserRole = null,
+  perms = null,
+  isRoomOwner = false,
   tags = [],
 }) {
   const supabase = createClient();
@@ -60,7 +59,19 @@ export default function BoardBody({
   const MAX_CHECKLIST_ITEMS = 10;
 
   const isRoom = scope === 'room';
-  const canAssign = isRoom && currentUserRole === 'owner';
+  const isPersonal = !isRoom;
+  // Personal boards let the user do everything to their own tasks; rooms
+  // rely on the permissions object computed by the parent.
+  const p = perms || {};
+  const canCreateTask = isPersonal || !!p.create_tasks;
+  const canEditTask = isPersonal || !!p.edit_any_task;
+  const canDeleteTask = isPersonal || !!p.delete_any_task;
+  const canAssign = isRoom && !!p.assign_members;
+  const canEditChecklist = isPersonal || !!p.manage_checklists;
+  const canApproveRequests = isRoom && !!p.approve_completion_requests;
+  // "Any write at all" — controls the footer layout of the task detail modal
+  // and whether Completed section shows action buttons.
+  const canEdit = canCreateTask || canEditTask || canDeleteTask;
 
   // Конвертация: timestamptz из БД -> локальная строка для datetime-local input
   const isoToLocalInput = (iso) => {
@@ -275,8 +286,8 @@ export default function BoardBody({
         .single();
       if (!error && data) {
         if (canAssign) await syncAssignees(data.id, formData.assignees);
-        if (canEdit) await syncTags(data.id, formData.tags);
-        if (canEdit) await syncChecklist(data.id, formData.checklist);
+        if (canEditTask) await syncTags(data.id, formData.tags);
+        if (canEditChecklist) await syncChecklist(data.id, formData.checklist);
         await loadTasks();
       }
     } else {
@@ -292,8 +303,8 @@ export default function BoardBody({
       const { data, error } = await supabase.from('tasks').insert(payload).select().single();
       if (!error && data) {
         if (canAssign) await syncAssignees(data.id, formData.assignees);
-        if (canEdit) await syncTags(data.id, formData.tags);
-        if (canEdit) await syncChecklist(data.id, formData.checklist);
+        if (canCreateTask) await syncTags(data.id, formData.tags);
+        if (canCreateTask) await syncChecklist(data.id, formData.checklist);
         await loadTasks();
       }
     }
@@ -445,7 +456,7 @@ export default function BoardBody({
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="text-sm text-gray-500">
           {tasks.filter(t => !t.done).length} активных · {completedTasks.length} выполнено
-          {!canEdit && <span className="ml-2 text-yellow-700">· Роль наблюдателя — редактировать нельзя</span>}
+          {!canEdit && <span className="ml-2 text-yellow-700">· Только просмотр — у вашей роли нет прав на изменение</span>}
         </div>
         <div className="flex gap-2">
           <button
@@ -454,7 +465,7 @@ export default function BoardBody({
           >
             {showCompleted ? 'Скрыть выполненные' : 'Показать выполненные'}
           </button>
-          {canEdit && (
+          {canCreateTask && (
             <button onClick={openAdd} className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 flex items-center gap-2">
               <Plus size={16} /> Добавить задачу
             </button>
@@ -469,11 +480,11 @@ export default function BoardBody({
           return (
             <div
               key={idx}
-              onDragOver={(e) => { if (canEdit && draggingTaskId) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } }}
-              onDragEnter={(e) => { if (canEdit && draggingTaskId) { e.preventDefault(); setDragOverQuadrant(idx); } }}
+              onDragOver={(e) => { if (canEditTask && draggingTaskId) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } }}
+              onDragEnter={(e) => { if (canEditTask && draggingTaskId) { e.preventDefault(); setDragOverQuadrant(idx); } }}
               onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverQuadrant((cur) => cur === idx ? null : cur); }}
               onDrop={(e) => {
-                if (!canEdit || !draggingTaskId) return;
+                if (!canEditTask || !draggingTaskId) return;
                 e.preventDefault();
                 moveTaskToQuadrant(draggingTaskId, q.important, q.urgent);
                 setDragOverQuadrant(null);
@@ -493,16 +504,16 @@ export default function BoardBody({
                   return (
                     <div
                       key={task.id}
-                      draggable={canEdit}
+                      draggable={canEditTask}
                       onDragStart={(e) => {
-                        if (!canEdit) return;
+                        if (!canEditTask) return;
                         setDraggingTaskId(task.id);
                         e.dataTransfer.effectAllowed = 'move';
                         try { e.dataTransfer.setData('text/plain', task.id); } catch {}
                       }}
                       onDragEnd={() => { setDraggingTaskId(null); setDragOverQuadrant(null); }}
                       onClick={() => { if (!draggingTaskId) setSelectedTask(task); }}
-                      className={`group border border-gray-200 rounded-md p-3 hover:border-gray-400 hover:shadow-sm bg-white transition-all ${canEdit ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${isDragging ? 'opacity-40' : ''}`}
+                      className={`group border border-gray-200 rounded-md p-3 hover:border-gray-400 hover:shadow-sm bg-white transition-all ${canEditTask ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${isDragging ? 'opacity-40' : ''}`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="text-sm font-medium text-gray-900 line-clamp-2 flex-1">{task.title}</h3>
@@ -553,7 +564,7 @@ export default function BoardBody({
                             <Bot size={10} /> Создано ИИ
                           </div>
                         )}
-                        {isRoom && canEdit && (task.pendingRequests || []).length > 0 && (
+                        {isRoom && canApproveRequests && (task.pendingRequests || []).length > 0 && (
                           <div className="inline-flex items-center gap-1 text-xs px-2 py-0.5 border border-blue-200 bg-blue-50 text-blue-700 rounded">
                             <MessageSquare size={10} /> {task.pendingRequests.length} {task.pendingRequests.length === 1 ? 'запрос' : 'запросов'}
                           </div>
@@ -575,10 +586,14 @@ export default function BoardBody({
             {completedTasks.map(task => (
               <div key={task.id} className="flex items-center justify-between border border-gray-200 rounded-md p-3">
                 <span className="text-sm text-gray-500 line-through">{task.title}</span>
-                {canEdit && (
+                {(canEditTask || canDeleteTask) && (
                   <div className="flex gap-2">
-                    <button onClick={() => toggleDone(task)} className="text-xs text-gray-600 hover:text-gray-900">Вернуть</button>
-                    <button onClick={() => del(task.id)} className="text-xs text-red-600 hover:text-red-800">Удалить</button>
+                    {canEditTask && (
+                      <button onClick={() => toggleDone(task)} className="text-xs text-gray-600 hover:text-gray-900">Вернуть</button>
+                    )}
+                    {canDeleteTask && (
+                      <button onClick={() => del(task.id)} className="text-xs text-red-600 hover:text-red-800">Удалить</button>
+                    )}
                   </div>
                 )}
               </div>
@@ -636,12 +651,12 @@ export default function BoardBody({
                         {items.map((it) => (
                           <label
                             key={it.id}
-                            className={`flex items-start gap-2 px-2 py-1.5 rounded ${canEdit ? 'hover:bg-gray-50 cursor-pointer' : ''}`}
+                            className={`flex items-start gap-2 px-2 py-1.5 rounded ${canEditChecklist ? 'hover:bg-gray-50 cursor-pointer' : ''}`}
                           >
                             <input
                               type="checkbox"
                               checked={it.done}
-                              disabled={!canEdit}
+                              disabled={!canEditChecklist}
                               onChange={(e) => toggleChecklistItem(it.id, e.target.checked)}
                               className="w-4 h-4 mt-0.5 flex-shrink-0"
                             />
@@ -669,8 +684,8 @@ export default function BoardBody({
                 </div>
               </div>
             )}
-            {/* Для owner/editor: список активных запросов на выполнение */}
-            {isRoom && canEdit && (selectedTask.pendingRequests || []).length > 0 && (
+            {/* Для участников с approve_completion_requests: список активных запросов */}
+            {isRoom && canApproveRequests && (selectedTask.pendingRequests || []).length > 0 && (
               <div className="mt-4 pt-4 border-t border-gray-100">
                 <p className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
                   <MessageSquare size={12} /> Запросы на выполнение
@@ -713,28 +728,37 @@ export default function BoardBody({
             )}
           </div>
           {/* Футер: разные варианты в зависимости от прав и назначения */}
-          {canEdit ? (
+          {(canEditTask || canDeleteTask) ? (
             <div className="flex items-center justify-between p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
-              <button
-                onClick={() => {
-                  if (isRoom && currentUserRole === 'editor') {
-                    setRequestModal({ mode: 'editor_complete', taskId: selectedTask.id });
-                    setRequestNote('');
-                  } else {
-                    toggleDone(selectedTask);
-                  }
-                }}
-                className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 flex items-center gap-2"
-              >
-                <Check size={16} /> Выполнено
-              </button>
-              <div className="flex gap-2">
-                <button onClick={() => openEdit(selectedTask)} className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 flex items-center gap-2"><Edit2 size={14} /> Редактировать</button>
-                <button onClick={() => del(selectedTask.id)} className="px-3 py-2 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50 flex items-center gap-2"><Trash2 size={14} /> Удалить</button>
+              {canEditTask && (
+                <button
+                  onClick={() => {
+                    // Owner (или личная доска) — отмечаем напрямую без доп. модалки.
+                    // Остальные с edit_any_task проходят через editor_complete,
+                    // чтобы передать комментарий владельцу через триггер уведомлений.
+                    if (isRoom && !isRoomOwner) {
+                      setRequestModal({ mode: 'editor_complete', taskId: selectedTask.id });
+                      setRequestNote('');
+                    } else {
+                      toggleDone(selectedTask);
+                    }
+                  }}
+                  className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 flex items-center gap-2"
+                >
+                  <Check size={16} /> Выполнено
+                </button>
+              )}
+              <div className="flex gap-2 ml-auto">
+                {canEditTask && (
+                  <button onClick={() => openEdit(selectedTask)} className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 flex items-center gap-2"><Edit2 size={14} /> Редактировать</button>
+                )}
+                {canDeleteTask && (
+                  <button onClick={() => del(selectedTask.id)} className="px-3 py-2 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50 flex items-center gap-2"><Trash2 size={14} /> Удалить</button>
+                )}
               </div>
             </div>
           ) : (
-            // Наблюдатель: кнопка запроса, если назначен на эту задачу
+            // Нет прав на edit/delete: если назначен — может отправить запрос на выполнение
             isRoom && (selectedTask.assignees || []).includes(userId) && !selectedTask.done && (
               <div className="p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
                 {(() => {
@@ -834,7 +858,7 @@ export default function BoardBody({
                 )}
               </div>
             </div>
-            {canEdit && tags.length > 0 && (
+            {(editingTask ? canEditTask : canCreateTask) && tags.length > 0 && (
               <div>
                 <label className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
                   <TagIcon size={12} /> Теги (необязательно)
@@ -864,7 +888,7 @@ export default function BoardBody({
                 </div>
               </div>
             )}
-            {canEdit && (
+            {(editingTask ? canEditChecklist : canCreateTask) && (
               <div>
                 <label className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
                   <ListChecks size={12} /> Чеклист (необязательно · до {MAX_CHECKLIST_ITEMS} пунктов)
@@ -956,9 +980,9 @@ export default function BoardBody({
                         />
                         <Avatar profile={getProfile(m.user_id)} />
                         <span className="text-sm text-gray-800 flex-1">{name}</span>
-                        <span className="text-xs text-gray-400">
-                          {m.role === 'owner' ? 'Владелец' : m.role === 'editor' ? 'Помощник' : 'Зритель'}
-                        </span>
+                        {m.role === 'owner' && (
+                          <span className="text-xs text-amber-700">Владелец</span>
+                        )}
                       </label>
                     );
                   })}

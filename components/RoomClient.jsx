@@ -4,25 +4,53 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeft, Users, Copy, Eye, Shield, Crown, Trash2, UserCheck, X,
-  Lock, Ban, UserX, MoreVertical, ShieldBan, Inbox, CheckCircle2, Settings,
+  ArrowLeft, Users, Copy, Crown, Trash2, UserCheck, X, Shield,
+  Lock, Ban, UserX, MoreVertical, ShieldBan, Inbox, CheckCircle2, Settings, ChevronRight,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import BoardBody from '@/components/BoardBody';
 import Avatar from '@/components/Avatar';
 import TagsPanel from '@/components/TagsPanel';
+import RoleEditor from '@/components/RoleEditor';
 import { Modal } from '@/components/UI';
+import { memberPermissions, hasPerm } from '@/lib/permissions';
 
-function RoleBadge({ role }) {
-  const config = {
-    owner: { label: 'Владелец', Icon: Crown, classes: 'bg-gray-900 text-white border-gray-900' },
-    editor: { label: 'Помощник', Icon: Shield, classes: 'bg-white text-gray-900 border-gray-400' },
-    viewer: { label: 'Зритель', Icon: Eye, classes: 'bg-white text-gray-500 border-gray-300' }
-  }[role];
-  const { Icon } = config;
+// Text-contrast helper so colored chips stay readable on light/dark backgrounds.
+function pickTextColor(hex) {
+  if (!hex || hex[0] !== '#' || hex.length !== 7) return '#111827';
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  // Perceptual luminance — dark text on light backgrounds, white text on dark.
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 150 ? '#111827' : '#ffffff';
+}
+
+function RoleChip({ member, rolesById }) {
+  if (member.role === 'owner') {
+    return (
+      <span className="text-xs px-2 py-0.5 border rounded flex items-center gap-1 flex-shrink-0 bg-amber-50 text-amber-800 border-amber-300">
+        <Crown size={10} /> Владелец
+      </span>
+    );
+  }
+  const role = member.role_id ? rolesById[member.role_id] : null;
+  if (!role) {
+    // Fallback for rows that haven't been wired to a role yet (shouldn't
+    // happen after phase-1, but don't render junk if it does).
+    return (
+      <span className="text-xs px-2 py-0.5 border rounded flex items-center gap-1 flex-shrink-0 bg-white text-gray-500 border-gray-300">
+        —
+      </span>
+    );
+  }
+  const fg = pickTextColor(role.color);
   return (
-    <span className={`text-xs px-2 py-0.5 border rounded flex items-center gap-1 flex-shrink-0 ${config.classes}`}>
-      <Icon size={10} /> {config.label}
+    <span
+      className="text-xs px-2 py-0.5 border rounded flex items-center gap-1 flex-shrink-0"
+      style={{ backgroundColor: role.color, color: fg, borderColor: role.color }}
+    >
+      {role.name}
     </span>
   );
 }
@@ -40,7 +68,7 @@ function formatAgo(iso) {
   return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 }
 
-export default function RoomClient({ room, initialMembers, initialProfiles, userId }) {
+export default function RoomClient({ room, initialMembers, initialProfiles, initialRoles, userId }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -50,10 +78,12 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
   const [togglingPrivate, setTogglingPrivate] = useState(false);
   const [members, setMembers] = useState(initialMembers);
   const [profiles, setProfiles] = useState(initialProfiles);
+  const [roles, setRoles] = useState(initialRoles || []);
   const [showMembers, setShowMembers] = useState(true);
   const [activeTab, setActiveTab] = useState(searchParams?.get('tab') === 'requests' ? 'requests' : 'members');
   const [copied, setCopied] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('general');
   const [settingsNameInput, setSettingsNameInput] = useState(room.name);
   const [savingName, setSavingName] = useState(false);
   const [settingsCopied, setSettingsCopied] = useState(false);
@@ -74,11 +104,18 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
   const [unbanTarget, setUnbanTarget] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [memberMenuOpen, setMemberMenuOpen] = useState(null); // user_id
+  const [roleSubmenuOpen, setRoleSubmenuOpen] = useState(false);
 
-  const myRole = members.find(m => m.user_id === userId)?.role;
-  const canEdit = myRole === 'owner' || myRole === 'editor';
-  const canManage = myRole === 'owner';
-  const canSeeRequests = myRole === 'owner' || myRole === 'editor';
+  const rolesById = roles.reduce((acc, r) => { acc[r.id] = r; return acc; }, {});
+  const me = members.find(m => m.user_id === userId) || null;
+  const { isOwner, perms } = memberPermissions(me, rolesById);
+  const canManage = isOwner; // owner-only: rename+private toggle, transfer, delete, ban
+  const canSeeRequests = hasPerm(perms, 'manage_join_requests');
+  const canManageRoles = isOwner || hasPerm(perms, 'manage_roles');
+  const canManageRoomSettings = isOwner || hasPerm(perms, 'manage_room_settings');
+  const canKick = hasPerm(perms, 'kick_members');
+  const canManageTags = hasPerm(perms, 'manage_tags');
+  const canOpenSettings = canManage || canManageRoles || canManageRoomSettings;
 
   const getName = (uid) => profiles[uid]?.display_name || 'Пользователь';
   const getProfile = (uid) => profiles[uid] || null;
@@ -141,6 +178,27 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [room.id, userId]);
+
+  // Realtime: настраиваемые роли комнаты (создание/правка/удаление/смена default)
+  useEffect(() => {
+    let alive = true;
+    const reload = async () => {
+      const { data } = await supabase
+        .from('room_roles')
+        .select('id, name, color, permissions, is_default, position')
+        .eq('room_id', room.id)
+        .order('position', { ascending: true });
+      if (alive) setRoles(data || []);
+    };
+    const channel = supabase
+      .channel(`roles-${room.id}-${Math.random().toString(36).slice(2, 10)}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'room_roles', filter: `room_id=eq.${room.id}` },
+        () => reload()
+      )
+      .subscribe();
+    return () => { alive = false; supabase.removeChannel(channel); };
+  }, [room.id]);
 
   // Теги
   useEffect(() => {
@@ -228,8 +286,17 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
     if (activeTab === 'bans' && !canManage) setActiveTab('members');
   }, [canSeeRequests, canManage, activeTab]);
 
-  const updateRole = async (targetUserId, newRole) => {
-    await supabase.from('room_members').update({ role: newRole }).eq('room_id', room.id).eq('user_id', targetUserId);
+  const assignRole = async (targetUserId, newRoleId) => {
+    const { error } = await supabase.rpc('assign_member_role', {
+      p_room_id: room.id,
+      p_user_id: targetUserId,
+      p_role_id: newRoleId,
+    });
+    if (error) {
+      alert('Не удалось изменить роль: ' + error.message);
+      return;
+    }
+    flash('Роль обновлена');
   };
 
   const togglePrivate = async () => {
@@ -266,13 +333,15 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
 
   const openSettings = () => {
     setSettingsNameInput(roomName);
+    // Pick an initial tab the caller actually has access to.
+    setSettingsTab(canManageRoomSettings ? 'general' : (canManageRoles ? 'roles' : 'general'));
     setShowSettings(true);
   };
 
-  // Если владение передано — закрываем настройки, они больше не доступны
+  // Если все «управленческие» разрешения ушли — закрываем настройки.
   useEffect(() => {
-    if (!canManage && showSettings) setShowSettings(false);
-  }, [canManage, showSettings]);
+    if (!canOpenSettings && showSettings) setShowSettings(false);
+  }, [canOpenSettings, showSettings]);
 
   const transferOwnership = async () => {
     if (!transferRecipient || transferConfirmText.trim() !== roomName) return;
@@ -356,7 +425,10 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
 
   useEffect(() => {
     if (!memberMenuOpen) return;
-    const handler = () => setMemberMenuOpen(null);
+    const handler = () => {
+      setMemberMenuOpen(null);
+      setRoleSubmenuOpen(false);
+    };
     document.addEventListener('click', handler);
     return () => document.removeEventListener('click', handler);
   }, [memberMenuOpen]);
@@ -379,7 +451,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
           <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
             {isPrivate && <Lock size={18} className="text-gray-500" />}
             {roomName}
-            {canManage && (
+            {canOpenSettings && (
               <button
                 onClick={openSettings}
                 className="ml-1 p-1.5 rounded-md text-gray-400 hover:text-gray-900 hover:bg-gray-100"
@@ -434,17 +506,17 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
             scope="room"
             roomId={room.id}
             userId={userId}
-            canEdit={canEdit}
             members={members}
             profiles={profiles}
-            currentUserRole={myRole}
+            perms={perms}
+            isRoomOwner={isOwner}
             tags={tags}
           />
         </div>
 
         {showMembers && (
           <div className="space-y-4">
-          {canManage && <TagsPanel roomId={room.id} tags={tags} />}
+          {canManageTags && <TagsPanel roomId={room.id} tags={tags} />}
 
           {/* Переключатель вкладок */}
           <div className="bg-white border border-gray-200 rounded-lg">
@@ -483,13 +555,11 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
                 <div className="space-y-2">
                   {members.map(m => {
                     const isMe = m.user_id === userId;
-                    const isOwner = m.role === 'owner';
+                    const targetIsOwner = m.role === 'owner';
                     const memberName = getName(m.user_id);
-                    const showKickBtn = !isMe && !isOwner && canEdit && (
-                      canManage || (myRole === 'editor' && m.role === 'viewer')
-                    );
-                    const showBanBtn = !isMe && !isOwner && canManage;
-                    const showRoleBtn = !isMe && !isOwner && canManage;
+                    const showKickBtn = !isMe && !targetIsOwner && canKick;
+                    const showBanBtn = !isMe && !targetIsOwner && canManage;
+                    const showRoleBtn = !isMe && !targetIsOwner && canManageRoles && roles.length > 0;
                     const hasActions = showKickBtn || showBanBtn || showRoleBtn;
 
                     return (
@@ -499,13 +569,15 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
                             {memberName} {isMe && <span className="text-xs text-gray-500">(вы)</span>}
                           </span>
                           <div className="flex items-center gap-1">
-                            <RoleBadge role={m.role} />
+                            <RoleChip member={m} rolesById={rolesById} />
                             {hasActions && (
                               <div className="relative">
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setMemberMenuOpen(memberMenuOpen === m.user_id ? null : m.user_id);
+                                    const next = memberMenuOpen === m.user_id ? null : m.user_id;
+                                    setMemberMenuOpen(next);
+                                    setRoleSubmenuOpen(false);
                                   }}
                                   className="p-1 rounded hover:bg-gray-100 text-gray-500"
                                   aria-label="Меню"
@@ -515,23 +587,46 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
                                 {memberMenuOpen === m.user_id && (
                                   <div
                                     onClick={(e) => e.stopPropagation()}
-                                    className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 text-sm"
+                                    className="absolute right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 text-sm"
                                   >
-                                    {showRoleBtn && m.role === 'viewer' && (
-                                      <button
-                                        onClick={() => { updateRole(m.user_id, 'editor'); setMemberMenuOpen(null); }}
-                                        className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center gap-2"
-                                      >
-                                        <Shield size={12} /> Сделать помощником
-                                      </button>
-                                    )}
-                                    {showRoleBtn && m.role === 'editor' && (
-                                      <button
-                                        onClick={() => { updateRole(m.user_id, 'viewer'); setMemberMenuOpen(null); }}
-                                        className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center gap-2"
-                                      >
-                                        <Eye size={12} /> Сделать зрителем
-                                      </button>
+                                    {showRoleBtn && (
+                                      <div>
+                                        <button
+                                          onClick={() => setRoleSubmenuOpen((v) => !v)}
+                                          className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center gap-2 text-gray-700 justify-between"
+                                        >
+                                          <span className="flex items-center gap-2">
+                                            <Shield size={12} /> Изменить роль
+                                          </span>
+                                          <ChevronRight size={12} className={`transition-transform ${roleSubmenuOpen ? 'rotate-90' : ''}`} />
+                                        </button>
+                                        {roleSubmenuOpen && (
+                                          <div className="max-h-60 overflow-y-auto border-y border-gray-100 bg-gray-50">
+                                            {roles.map((r) => {
+                                              const current = m.role_id === r.id;
+                                              return (
+                                                <button
+                                                  key={r.id}
+                                                  disabled={current}
+                                                  onClick={() => {
+                                                    assignRole(m.user_id, r.id);
+                                                    setMemberMenuOpen(null);
+                                                    setRoleSubmenuOpen(false);
+                                                  }}
+                                                  className={`w-full text-left px-5 py-1.5 hover:bg-white flex items-center gap-2 ${current ? 'opacity-60 cursor-default' : ''}`}
+                                                >
+                                                  <span
+                                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-black/10"
+                                                    style={{ backgroundColor: r.color }}
+                                                  />
+                                                  <span className="truncate flex-1">{r.name}</span>
+                                                  {current && <span className="text-[10px] text-gray-500">сейчас</span>}
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
                                     )}
                                     {showKickBtn && (
                                       <button
@@ -680,7 +775,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
       )}
 
       {showSettings && (
-        <Modal onClose={() => setShowSettings(false)}>
+        <Modal onClose={() => setShowSettings(false)} wide>
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
             <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <Settings size={18} /> Настройки комнаты
@@ -688,94 +783,131 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
             <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
           </div>
 
-          <div className="p-6 space-y-6">
-            {/* Секция «Общие» */}
-            <section className="space-y-4">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Общие</h3>
+          {/* Tabs */}
+          <div className="flex border-b border-gray-200 bg-gray-50 text-sm">
+            <button
+              onClick={() => setSettingsTab('general')}
+              className={`px-4 py-2 border-b-2 ${settingsTab === 'general' ? 'border-gray-900 text-gray-900 font-medium' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
+            >
+              Общие
+            </button>
+            {(canManageRoles || roles.length > 0) && (
+              <button
+                onClick={() => setSettingsTab('roles')}
+                className={`px-4 py-2 border-b-2 ${settingsTab === 'roles' ? 'border-gray-900 text-gray-900 font-medium' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
+              >
+                Роли
+              </button>
+            )}
+            {canManage && (
+              <button
+                onClick={() => setSettingsTab('danger')}
+                className={`px-4 py-2 border-b-2 ${settingsTab === 'danger' ? 'border-red-600 text-red-700 font-medium' : 'border-transparent text-red-600 hover:text-red-700'}`}
+              >
+                Опасная зона
+              </button>
+            )}
+          </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
-                  Название комнаты
-                </label>
-                <div className="flex gap-2">
+          <div className="p-6 space-y-4">
+            {settingsTab === 'general' && (
+              <section className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
+                    Название комнаты
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={settingsNameInput}
+                      onChange={(e) => setSettingsNameInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') saveRoomName(); }}
+                      disabled={!canManageRoomSettings}
+                      className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 disabled:bg-gray-50"
+                    />
+                    {canManageRoomSettings && (
+                      <button
+                        onClick={saveRoomName}
+                        disabled={savingName || !settingsNameInput.trim() || settingsNameInput.trim() === roomName}
+                        className="flex-shrink-0 px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      >
+                        {savingName ? 'Сохраняем...' : 'Сохранить'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <label className="flex items-start gap-3 cursor-pointer select-none">
                   <input
-                    type="text"
-                    value={settingsNameInput}
-                    onChange={(e) => setSettingsNameInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') saveRoomName(); }}
-                    className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900"
+                    type="checkbox"
+                    checked={isPrivate}
+                    disabled={togglingPrivate || !canManageRoomSettings}
+                    onChange={togglePrivate}
+                    className="mt-0.5 w-4 h-4 accent-gray-900 flex-shrink-0"
                   />
+                  <span className="flex-1">
+                    <span className="text-sm font-medium text-gray-900 flex items-center gap-1.5">
+                      <Lock size={14} /> Закрытая комната
+                    </span>
+                    <span className="text-xs text-gray-500 block mt-0.5">
+                      Новые участники будут отправлять заявку на вступление вместо прямого входа.
+                    </span>
+                  </span>
+                </label>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
+                    Код комнаты
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={room.code}
+                      readOnly
+                      className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono tracking-widest text-center"
+                    />
+                    <button
+                      onClick={() => {
+                        navigator.clipboard?.writeText(room.code);
+                        setSettingsCopied(true);
+                        setTimeout(() => setSettingsCopied(false), 1500);
+                      }}
+                      className="flex-shrink-0 px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 flex items-center gap-2"
+                    >
+                      <Copy size={14} /> {settingsCopied ? 'Скопировано' : 'Скопировать'}
+                    </button>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {settingsTab === 'roles' && (
+              <RoleEditor
+                roomId={room.id}
+                roles={roles}
+                canManage={canManageRoles}
+              />
+            )}
+
+            {settingsTab === 'danger' && canManage && (
+              <section className="border border-red-200 rounded-lg p-4 space-y-3 bg-red-50/30">
+                <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide">Опасная зона</h3>
+                <div className="flex flex-col sm:flex-row gap-2">
                   <button
-                    onClick={saveRoomName}
-                    disabled={savingName || !settingsNameInput.trim() || settingsNameInput.trim() === roomName}
-                    className="flex-shrink-0 px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    onClick={() => { setShowTransferModal(true); setTransferRecipient(null); setTransferConfirmText(''); }}
+                    className="flex-1 px-4 py-2 text-sm border border-red-300 text-red-700 rounded-lg bg-white hover:bg-red-50 flex items-center justify-center gap-2"
                   >
-                    {savingName ? 'Сохраняем...' : 'Сохранить'}
+                    <UserCheck size={16} /> Передать владение
+                  </button>
+                  <button
+                    onClick={() => { setShowDeleteModal(true); setConfirmText(''); }}
+                    className="flex-1 px-4 py-2 text-sm border border-red-300 text-red-700 rounded-lg bg-white hover:bg-red-50 flex items-center justify-center gap-2"
+                  >
+                    <Trash2 size={16} /> Удалить комнату
                   </button>
                 </div>
-              </div>
-
-              <label className="flex items-start gap-3 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={isPrivate}
-                  disabled={togglingPrivate}
-                  onChange={togglePrivate}
-                  className="mt-0.5 w-4 h-4 accent-gray-900 flex-shrink-0"
-                />
-                <span className="flex-1">
-                  <span className="text-sm font-medium text-gray-900 flex items-center gap-1.5">
-                    <Lock size={14} /> Закрытая комната
-                  </span>
-                  <span className="text-xs text-gray-500 block mt-0.5">
-                    Новые участники будут отправлять заявку на вступление вместо прямого входа.
-                  </span>
-                </span>
-              </label>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
-                  Код комнаты
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={room.code}
-                    readOnly
-                    className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono tracking-widest text-center"
-                  />
-                  <button
-                    onClick={() => {
-                      navigator.clipboard?.writeText(room.code);
-                      setSettingsCopied(true);
-                      setTimeout(() => setSettingsCopied(false), 1500);
-                    }}
-                    className="flex-shrink-0 px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 flex items-center gap-2"
-                  >
-                    <Copy size={14} /> {settingsCopied ? 'Скопировано' : 'Скопировать'}
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            {/* Секция «Опасная зона» */}
-            <section className="border border-red-200 rounded-lg p-4 space-y-3 bg-red-50/30">
-              <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide">Опасная зона</h3>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <button
-                  onClick={() => { setShowTransferModal(true); setTransferRecipient(null); setTransferConfirmText(''); }}
-                  className="flex-1 px-4 py-2 text-sm border border-red-300 text-red-700 rounded-lg bg-white hover:bg-red-50 flex items-center justify-center gap-2"
-                >
-                  <UserCheck size={16} /> Передать владение
-                </button>
-                <button
-                  onClick={() => { setShowDeleteModal(true); setConfirmText(''); }}
-                  className="flex-1 px-4 py-2 text-sm border border-red-300 text-red-700 rounded-lg bg-white hover:bg-red-50 flex items-center justify-center gap-2"
-                >
-                  <Trash2 size={16} /> Удалить комнату
-                </button>
-              </div>
-            </section>
+              </section>
+            )}
           </div>
 
           <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
@@ -807,7 +939,6 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
                   {members.filter(m => m.user_id !== userId).map((m) => {
                     const name = getName(m.user_id);
                     const selected = transferRecipient === m.user_id;
-                    const roleLabel = m.role === 'editor' ? 'Помощник' : m.role === 'viewer' ? 'Зритель' : m.role;
                     return (
                       <button
                         key={m.user_id}
@@ -816,7 +947,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
                       >
                         <Avatar profile={getProfile(m.user_id)} size={28} />
                         <span className="text-sm flex-1 truncate">{name}</span>
-                        <span className={`text-xs ${selected ? 'text-gray-300' : 'text-gray-500'}`}>{roleLabel}</span>
+                        <RoleChip member={m} rolesById={rolesById} />
                       </button>
                     );
                   })}

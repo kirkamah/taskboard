@@ -22,8 +22,15 @@ export default async function RoomPage({ params }) {
   // Получаем участников
   const { data: members } = await supabase
     .from('room_members')
-    .select('user_id, role, joined_at')
+    .select('user_id, role, role_id, joined_at')
     .eq('room_id', id);
+
+  // Роли комнаты (настраиваемые; owner не представлен отдельной записью)
+  const { data: roles } = await supabase
+    .from('room_roles')
+    .select('id, name, color, permissions, is_default, position')
+    .eq('room_id', id)
+    .order('position', { ascending: true });
 
   // Получаем профили участников (имя + аватар)
   const userIds = (members || []).map(m => m.user_id);
@@ -52,6 +59,7 @@ export default async function RoomPage({ params }) {
         room={room}
         initialMembers={members || []}
         initialProfiles={profilesMap}
+        initialRoles={roles || []}
         userId={user.id}
       />
     </>

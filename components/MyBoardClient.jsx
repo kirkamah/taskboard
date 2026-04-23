@@ -34,7 +34,7 @@ export default function MyBoardClient({ userId }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
       <div className="lg:col-span-3">
-        <BoardBody scope="personal" userId={userId} canEdit={true} tags={tags} />
+        <BoardBody scope="personal" userId={userId} tags={tags} />
       </div>
       <div>
         <TagsPanel ownerId={userId} tags={tags} />
