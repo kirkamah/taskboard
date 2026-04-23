@@ -756,53 +756,6 @@ export default function RoomClient({ room, initialMembers, initialProfiles, init
         )}
       </div>
 
-      {showDeleteModal && (
-        <Modal onClose={() => setShowDeleteModal(false)}>
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-red-700">Удалить комнату?</h2>
-            <button onClick={() => setShowDeleteModal(false)} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
-          </div>
-          <div className="p-6 space-y-3">
-            <p className="text-sm text-gray-700">
-              Вы собираетесь навсегда удалить комнату <span className="font-semibold">«{roomName}»</span>.
-            </p>
-            <p className="text-sm text-gray-700">
-              Все задачи в комнате и список участников будут безвозвратно удалены. Личные доски участников не пострадают.
-            </p>
-            <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">
-              Это действие нельзя отменить.
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
-                Для подтверждения введите название комнаты: <span className="font-mono normal-case">{roomName}</span>
-              </label>
-              <input
-                type="text"
-                value={confirmText}
-                onChange={(e) => setConfirmText(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-red-500"
-                autoFocus
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
-            <button
-              onClick={() => setShowDeleteModal(false)}
-              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
-            >
-              Отмена
-            </button>
-            <button
-              onClick={deleteRoom}
-              disabled={confirmText.trim() !== roomName || deleting}
-              className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-            >
-              {deleting ? 'Удаляем...' : 'Удалить навсегда'}
-            </button>
-          </div>
-        </Modal>
-      )}
-
       {showSettings && (
         <Modal onClose={() => setShowSettings(false)} wide>
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
@@ -945,6 +898,56 @@ export default function RoomClient({ room, initialMembers, initialProfiles, init
               className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
             >
               Закрыть
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Rendered after the Settings modal so, when both are open at once
+          (user clicks Удалить комнату from the Опасная зона tab), the
+          confirmation stacks on top instead of hiding behind Settings. */}
+      {showDeleteModal && (
+        <Modal onClose={() => setShowDeleteModal(false)}>
+          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-red-700">Удалить комнату?</h2>
+            <button onClick={() => setShowDeleteModal(false)} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
+          </div>
+          <div className="p-6 space-y-3">
+            <p className="text-sm text-gray-700">
+              Вы собираетесь навсегда удалить комнату <span className="font-semibold">«{roomName}»</span>.
+            </p>
+            <p className="text-sm text-gray-700">
+              Все задачи в комнате и список участников будут безвозвратно удалены. Личные доски участников не пострадают.
+            </p>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
+                Для подтверждения введите название комнаты: <span className="font-mono normal-case">{roomName}</span>
+              </label>
+              <input
+                type="text"
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-red-500"
+                autoFocus
+              />
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">
+              Это действие нельзя отменить.
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+            <button
+              onClick={() => setShowDeleteModal(false)}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
+            >
+              Отмена
+            </button>
+            <button
+              onClick={deleteRoom}
+              disabled={confirmText.trim() !== roomName || deleting}
+              className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+            >
+              {deleting ? 'Удаляем...' : 'Удалить навсегда'}
             </button>
           </div>
         </Modal>
