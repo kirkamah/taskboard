@@ -1,0 +1,19 @@
+{
+  "name": "@taskboard/mcp",
+  "version": "0.1.0",
+  "description": "MCP server that exposes the Taskboard REST API as tools for Claude Desktop (and other MCP clients).",
+  "type": "module",
+  "bin": {
+    "taskboard-mcp": "./index.js"
+  },
+  "main": "./index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

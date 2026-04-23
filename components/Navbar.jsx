@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
-  LogOut, User, ChevronDown, ChevronUp, Bell, MessageSquare, Check, X, Crown, ArrowLeft,
+  LogOut, User, ChevronDown, ChevronUp, Bell, MessageSquare, Check, X, Crown, ArrowLeft, KeyRound,
 } from 'lucide-react';
 import LinkifiedText from './LinkifiedText';
 import Avatar from './Avatar';
@@ -141,6 +141,13 @@ export default function Navbar({ userName, userId, userProfile }) {
                 className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
               >
                 <User size={14} /> Профиль
+              </Link>
+              <Link
+                href="/profile/api-keys"
+                onClick={closeMenu}
+                className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              >
+                <KeyRound size={14} /> API-ключи
               </Link>
               <button
                 onClick={() => setView('notifications')}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus, MessageSquare, Send, Tag as TagIcon, ListChecks } from 'lucide-react';
+import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus, MessageSquare, Send, Tag as TagIcon, ListChecks, Bot } from 'lucide-react';
 import { Modal, Toggle } from './UI';
 import LinkifiedText from './LinkifiedText';
 import Avatar from './Avatar';
@@ -543,6 +543,14 @@ export default function BoardBody({
                         {task.due_at && (
                           <div className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded ${dueClasses}`}>
                             <Calendar size={10} /> {formatDue(task.due_at)}
+                          </div>
+                        )}
+                        {task.created_by_api_key_id && (
+                          <div
+                            className="inline-flex items-center gap-1 text-xs px-2 py-0.5 border border-purple-200 bg-purple-50 text-purple-700 rounded"
+                            title="Создано внешним ИИ через API"
+                          >
+                            <Bot size={10} /> Создано ИИ
                           </div>
                         )}
                         {isRoom && canEdit && (task.pendingRequests || []).length > 0 && (

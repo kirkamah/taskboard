@@ -6,6 +6,8 @@ export async function middleware(request) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'
+    // Exclude /api/v1/* — those routes authenticate via Bearer API key, not cookies,
+    // and the default updateSession would redirect them to /login.
+    '/((?!_next/static|_next/image|favicon.ico|api/v1|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'
   ]
 };
