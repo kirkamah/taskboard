@@ -1,9 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, Users, Copy, Eye, Shield, Crown, Trash2, Edit2, UserCheck, X } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import {
+  ArrowLeft, Users, Copy, Eye, Shield, Crown, Trash2, Edit2, UserCheck, X,
+  Lock, Unlock, Ban, UserX, MoreVertical, ShieldBan, Inbox, CheckCircle2,
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import BoardBody from '@/components/BoardBody';
 import Avatar from '@/components/Avatar';
@@ -24,14 +27,31 @@ function RoleBadge({ role }) {
   );
 }
 
+function formatAgo(iso) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'только что';
+  if (mins < 60) return `${mins} мин назад`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} ч назад`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'вчера';
+  if (days < 7) return `${days} дн назад`;
+  return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+}
+
 export default function RoomClient({ room, initialMembers, initialProfiles, userId }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
 
   const [roomName, setRoomName] = useState(room.name);
+  const [isPrivate, setIsPrivate] = useState(!!room.is_private);
+  const [togglingPrivate, setTogglingPrivate] = useState(false);
   const [members, setMembers] = useState(initialMembers);
   const [profiles, setProfiles] = useState(initialProfiles);
   const [showMembers, setShowMembers] = useState(true);
+  const [activeTab, setActiveTab] = useState(searchParams?.get('tab') === 'requests' ? 'requests' : 'members');
   const [copied, setCopied] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -46,14 +66,51 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
   const [flashMsg, setFlashMsg] = useState('');
   const [tags, setTags] = useState([]);
 
+  const [requests, setRequests] = useState([]); // pending-заявки
+  const [bans, setBans] = useState([]);
+  const [kickTarget, setKickTarget] = useState(null);   // {user_id, name}
+  const [banTarget, setBanTarget] = useState(null);
+  const [unbanTarget, setUnbanTarget] = useState(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [memberMenuOpen, setMemberMenuOpen] = useState(null); // user_id
+
   const myRole = members.find(m => m.user_id === userId)?.role;
   const canEdit = myRole === 'owner' || myRole === 'editor';
   const canManage = myRole === 'owner';
+  const canSeeRequests = myRole === 'owner' || myRole === 'editor';
 
   const getName = (uid) => profiles[uid]?.display_name || 'Пользователь';
   const getProfile = (uid) => profiles[uid] || null;
 
-  // Realtime: подписка на изменения состава участников
+  const flash = (msg) => {
+    setFlashMsg(msg);
+    setTimeout(() => setFlashMsg(''), 2500);
+  };
+
+  // Догружаем профили для uid, которых ещё нет в profiles.
+  const hydrateProfiles = useCallback(async (uids) => {
+    const missing = Array.from(new Set(uids.filter(u => u && !profiles[u])));
+    if (missing.length === 0) return;
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, display_name, avatar_emoji, avatar_color')
+      .in('id', missing);
+    if (data?.length) {
+      setProfiles(prev => {
+        const next = { ...prev };
+        data.forEach(p => {
+          next[p.id] = {
+            display_name: p.display_name,
+            avatar_emoji: p.avatar_emoji,
+            avatar_color: p.avatar_color,
+          };
+        });
+        return next;
+      });
+    }
+  }, [profiles, supabase]);
+
+  // Realtime: состав участников и сама комната
   useEffect(() => {
     const channel = supabase
       .channel(`members-${room.id}`)
@@ -62,25 +119,11 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
         async (payload) => {
           if (payload.eventType === 'INSERT') {
             setMembers(prev => prev.some(m => m.user_id === payload.new.user_id) ? prev : [...prev, payload.new]);
-            // Подгружаем профиль нового участника
-            const { data } = await supabase
-              .from('profiles')
-              .select('id, display_name, avatar_emoji, avatar_color')
-              .eq('id', payload.new.user_id)
-              .single();
-            if (data) setProfiles(prev => ({
-              ...prev,
-              [data.id]: {
-                display_name: data.display_name,
-                avatar_emoji: data.avatar_emoji,
-                avatar_color: data.avatar_color,
-              },
-            }));
+            hydrateProfiles([payload.new.user_id]);
           } else if (payload.eventType === 'UPDATE') {
             setMembers(prev => prev.map(m => m.user_id === payload.new.user_id ? payload.new : m));
           } else if (payload.eventType === 'DELETE') {
             setMembers(prev => prev.filter(m => m.user_id !== payload.old.user_id));
-            // Если удалили меня — выкинуть на главную
             if (payload.old.user_id === userId) {
               router.push('/dashboard');
             }
@@ -91,13 +134,14 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
         { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${room.id}` },
         (payload) => {
           if (payload.new?.name) setRoomName(payload.new.name);
+          if (typeof payload.new?.is_private === 'boolean') setIsPrivate(payload.new.is_private);
         }
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [room.id, userId]);
 
-  // Теги комнаты: загрузка + realtime
+  // Теги
   useEffect(() => {
     let alive = true;
     const load = async () => {
@@ -119,12 +163,84 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
     return () => { alive = false; supabase.removeChannel(channel); };
   }, [room.id]);
 
+  // Заявки (видны owner+editor)
+  useEffect(() => {
+    if (!canSeeRequests) {
+      setRequests([]);
+      return;
+    }
+    let alive = true;
+    const load = async () => {
+      const { data } = await supabase
+        .from('room_join_requests')
+        .select('id, user_id, status, note, created_at')
+        .eq('room_id', room.id)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+      if (!alive) return;
+      setRequests(data || []);
+      hydrateProfiles((data || []).map(r => r.user_id));
+    };
+    load();
+    const channel = supabase
+      .channel(`requests-${room.id}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'room_join_requests', filter: `room_id=eq.${room.id}` },
+        () => load()
+      )
+      .subscribe();
+    return () => { alive = false; supabase.removeChannel(channel); };
+  }, [room.id, canSeeRequests]);
+
+  // Баны (видны только owner)
+  useEffect(() => {
+    if (!canManage) {
+      setBans([]);
+      return;
+    }
+    let alive = true;
+    const load = async () => {
+      const { data } = await supabase
+        .from('room_bans')
+        .select('id, user_id, banned_by, reason, created_at')
+        .eq('room_id', room.id)
+        .order('created_at', { ascending: false });
+      if (!alive) return;
+      setBans(data || []);
+      const uids = (data || []).flatMap(b => [b.user_id, b.banned_by]);
+      hydrateProfiles(uids);
+    };
+    load();
+    const channel = supabase
+      .channel(`bans-${room.id}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'room_bans', filter: `room_id=eq.${room.id}` },
+        () => load()
+      )
+      .subscribe();
+    return () => { alive = false; supabase.removeChannel(channel); };
+  }, [room.id, canManage]);
+
+  // Если вкладка стала недоступна (например, owner передал владение) — вернуться на members
+  useEffect(() => {
+    if (activeTab === 'requests' && !canSeeRequests) setActiveTab('members');
+    if (activeTab === 'bans' && !canManage) setActiveTab('members');
+  }, [canSeeRequests, canManage, activeTab]);
+
   const updateRole = async (targetUserId, newRole) => {
     await supabase.from('room_members').update({ role: newRole }).eq('room_id', room.id).eq('user_id', targetUserId);
   };
 
-  const removeMember = async (targetUserId) => {
-    await supabase.from('room_members').delete().eq('room_id', room.id).eq('user_id', targetUserId);
+  const togglePrivate = async () => {
+    setTogglingPrivate(true);
+    const next = !isPrivate;
+    const { error } = await supabase.from('rooms').update({ is_private: next }).eq('id', room.id);
+    setTogglingPrivate(false);
+    if (error) {
+      alert('Не удалось изменить: ' + error.message);
+      return;
+    }
+    setIsPrivate(next);
   };
 
   const leaveRoom = async () => {
@@ -165,8 +281,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
     setShowTransferModal(false);
     setTransferRecipient(null);
     setTransferConfirmText('');
-    setFlashMsg('Владение передано');
-    setTimeout(() => setFlashMsg(''), 2500);
+    flash('Владение передано');
   };
 
   const deleteRoom = async () => {
@@ -178,9 +293,68 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
       alert('Не удалось удалить комнату: ' + error.message);
       return;
     }
-    // Каскад в БД сам удалит room_members и tasks
     router.push('/dashboard');
   };
+
+  const approveRequest = async (requestId) => {
+    const { error } = await supabase.rpc('approve_join_request', { _request_id: requestId });
+    if (error) { alert('Не удалось принять заявку: ' + error.message); return; }
+    flash('Заявка принята');
+  };
+  const rejectRequest = async (requestId) => {
+    const { error } = await supabase.rpc('reject_join_request', { _request_id: requestId });
+    if (error) { alert('Не удалось отклонить заявку: ' + error.message); return; }
+    flash('Заявка отклонена');
+  };
+
+  const confirmKick = async () => {
+    if (!kickTarget) return;
+    setActionBusy(true);
+    const { error } = await supabase.rpc('kick_member', {
+      _room_id: room.id,
+      _target_user_id: kickTarget.user_id,
+    });
+    setActionBusy(false);
+    if (error) { alert('Не удалось удалить участника: ' + error.message); return; }
+    setKickTarget(null);
+    flash('Участник удалён');
+  };
+
+  const confirmBan = async () => {
+    if (!banTarget) return;
+    setActionBusy(true);
+    const { error } = await supabase.rpc('ban_member', {
+      _room_id: room.id,
+      _target_user_id: banTarget.user_id,
+    });
+    setActionBusy(false);
+    if (error) { alert('Не удалось заблокировать: ' + error.message); return; }
+    setBanTarget(null);
+    flash('Участник заблокирован');
+  };
+
+  const confirmUnban = async () => {
+    if (!unbanTarget) return;
+    setActionBusy(true);
+    const { error } = await supabase.rpc('unban_member', {
+      _room_id: room.id,
+      _target_user_id: unbanTarget.user_id,
+    });
+    setActionBusy(false);
+    if (error) { alert('Не удалось разблокировать: ' + error.message); return; }
+    setUnbanTarget(null);
+    flash('Участник разблокирован');
+  };
+
+  useEffect(() => {
+    if (!memberMenuOpen) return;
+    const handler = () => setMemberMenuOpen(null);
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [memberMenuOpen]);
+
+  const pendingCount = requests.length;
+  const banCount = bans.length;
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-6">
@@ -194,7 +368,10 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
           <Link href="/dashboard" className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1 mb-2">
             <ArrowLeft size={16} /> На главную
           </Link>
-          <h1 className="text-2xl font-semibold text-gray-900">{roomName}</h1>
+          <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
+            {isPrivate && <Lock size={18} className="text-gray-500" />}
+            {roomName}
+          </h1>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             <span className="text-sm text-gray-500">Код:</span>
             <span className="font-mono text-sm px-2 py-1 bg-gray-100 border border-gray-200 rounded">{room.code}</span>
@@ -210,7 +387,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
             </button>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {!canManage && (
             <button
               onClick={leaveRoom}
@@ -221,6 +398,15 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
           )}
           {canManage && (
             <>
+              <button
+                onClick={togglePrivate}
+                disabled={togglingPrivate}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-100 flex items-center gap-2 disabled:opacity-60"
+                title={isPrivate ? 'Сделать открытой' : 'Сделать закрытой'}
+              >
+                {isPrivate ? <Unlock size={16} /> : <Lock size={16} />}
+                {isPrivate ? 'Открыть' : 'Закрыть'}
+              </button>
               <button
                 onClick={() => { setShowRenameModal(true); setRenameText(roomName); }}
                 className="px-4 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-100 flex items-center gap-2"
@@ -246,6 +432,11 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
             className="px-4 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-100 flex items-center gap-2"
           >
             <Users size={16} /> {showMembers ? 'Скрыть' : 'Участники'} ({members.length})
+            {canSeeRequests && pendingCount > 0 && (
+              <span className="ml-1 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-semibold rounded-full flex items-center justify-center">
+                {pendingCount > 99 ? '99+' : pendingCount}
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -267,50 +458,187 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
         {showMembers && (
           <div className="space-y-4">
           {canManage && <TagsPanel roomId={room.id} tags={tags} />}
-          <div className="bg-white border border-gray-200 rounded-lg p-4 h-fit">
-            <h2 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-              <Users size={16} /> Участники
-            </h2>
-            <div className="space-y-2">
-              {members.map(m => {
-                const isMe = m.user_id === userId;
-                return (
-                  <div key={m.user_id} className="border border-gray-200 rounded-md p-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium text-gray-900 truncate">
-                        {getName(m.user_id)} {isMe && <span className="text-xs text-gray-500">(вы)</span>}
-                      </span>
-                      <RoleBadge role={m.role} />
-                    </div>
-                    {canManage && !isMe && m.role !== 'owner' && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {m.role === 'viewer' && (
-                          <button
-                            onClick={() => updateRole(m.user_id, 'editor')}
-                            className="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 flex items-center gap-1"
-                          >
-                            <Shield size={10} /> Помощник
-                          </button>
-                        )}
-                        {m.role === 'editor' && (
-                          <button
-                            onClick={() => updateRole(m.user_id, 'viewer')}
-                            className="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 flex items-center gap-1"
-                          >
-                            <Eye size={10} /> Зритель
-                          </button>
-                        )}
+
+          {/* Переключатель вкладок */}
+          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+            <div className="flex border-b border-gray-200 bg-gray-50 text-xs">
+              <button
+                onClick={() => setActiveTab('members')}
+                className={`flex-1 px-3 py-2 flex items-center justify-center gap-1 ${activeTab === 'members' ? 'bg-white text-gray-900 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}
+              >
+                <Users size={12} /> Участники ({members.length})
+              </button>
+              {canSeeRequests && (
+                <button
+                  onClick={() => setActiveTab('requests')}
+                  className={`flex-1 px-3 py-2 flex items-center justify-center gap-1 border-l border-gray-200 ${activeTab === 'requests' ? 'bg-white text-gray-900 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}
+                >
+                  <Inbox size={12} /> Заявки
+                  {pendingCount > 0 && (
+                    <span className="ml-1 min-w-[16px] h-[16px] px-1 bg-red-500 text-white text-[10px] font-semibold rounded-full flex items-center justify-center">
+                      {pendingCount > 99 ? '99+' : pendingCount}
+                    </span>
+                  )}
+                </button>
+              )}
+              {canManage && (
+                <button
+                  onClick={() => setActiveTab('bans')}
+                  className={`flex-1 px-3 py-2 flex items-center justify-center gap-1 border-l border-gray-200 ${activeTab === 'bans' ? 'bg-white text-gray-900 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}
+                >
+                  <ShieldBan size={12} /> Блок-лист{banCount > 0 && ` (${banCount})`}
+                </button>
+              )}
+            </div>
+
+            <div className="p-4">
+              {activeTab === 'members' && (
+                <div className="space-y-2">
+                  {members.map(m => {
+                    const isMe = m.user_id === userId;
+                    const isOwner = m.role === 'owner';
+                    const memberName = getName(m.user_id);
+                    const showKickBtn = !isMe && !isOwner && canEdit && (
+                      canManage || (myRole === 'editor' && m.role === 'viewer')
+                    );
+                    const showBanBtn = !isMe && !isOwner && canManage;
+                    const showRoleBtn = !isMe && !isOwner && canManage;
+                    const hasActions = showKickBtn || showBanBtn || showRoleBtn;
+
+                    return (
+                      <div key={m.user_id} className="border border-gray-200 rounded-md p-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-gray-900 truncate">
+                            {memberName} {isMe && <span className="text-xs text-gray-500">(вы)</span>}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <RoleBadge role={m.role} />
+                            {hasActions && (
+                              <div className="relative">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMemberMenuOpen(memberMenuOpen === m.user_id ? null : m.user_id);
+                                  }}
+                                  className="p-1 rounded hover:bg-gray-100 text-gray-500"
+                                  aria-label="Меню"
+                                >
+                                  <MoreVertical size={14} />
+                                </button>
+                                {memberMenuOpen === m.user_id && (
+                                  <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-40 py-1 text-sm"
+                                  >
+                                    {showRoleBtn && m.role === 'viewer' && (
+                                      <button
+                                        onClick={() => { updateRole(m.user_id, 'editor'); setMemberMenuOpen(null); }}
+                                        className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center gap-2"
+                                      >
+                                        <Shield size={12} /> Сделать помощником
+                                      </button>
+                                    )}
+                                    {showRoleBtn && m.role === 'editor' && (
+                                      <button
+                                        onClick={() => { updateRole(m.user_id, 'viewer'); setMemberMenuOpen(null); }}
+                                        className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center gap-2"
+                                      >
+                                        <Eye size={12} /> Сделать зрителем
+                                      </button>
+                                    )}
+                                    {showKickBtn && (
+                                      <button
+                                        onClick={() => { setKickTarget({ user_id: m.user_id, name: memberName }); setMemberMenuOpen(null); }}
+                                        className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center gap-2 text-gray-700"
+                                      >
+                                        <UserX size={12} /> Удалить из комнаты
+                                      </button>
+                                    )}
+                                    {showBanBtn && (
+                                      <button
+                                        onClick={() => { setBanTarget({ user_id: m.user_id, name: memberName }); setMemberMenuOpen(null); }}
+                                        className="w-full text-left px-3 py-2 hover:bg-red-50 flex items-center gap-2 text-red-600"
+                                      >
+                                        <Ban size={12} /> Заблокировать
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {activeTab === 'requests' && canSeeRequests && (
+                <div className="space-y-2">
+                  {requests.length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-6">
+                      Заявок нет
+                    </p>
+                  ) : requests.map(r => (
+                    <div key={r.id} className="border border-gray-200 rounded-md p-2">
+                      <div className="flex items-center gap-2">
+                        <Avatar profile={getProfile(r.user_id)} size={28} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {getName(r.user_id)}
+                          </p>
+                          <p className="text-xs text-gray-500">{formatAgo(r.created_at)}</p>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex gap-1">
                         <button
-                          onClick={() => removeMember(m.user_id)}
-                          className="text-xs px-2 py-1 border border-red-300 text-red-600 rounded hover:bg-red-50"
+                          onClick={() => approveRequest(r.id)}
+                          className="flex-1 text-xs px-2 py-1 bg-gray-900 text-white rounded hover:bg-gray-800 flex items-center justify-center gap-1"
                         >
-                          Удалить
+                          <CheckCircle2 size={12} /> Принять
+                        </button>
+                        <button
+                          onClick={() => rejectRequest(r.id)}
+                          className="flex-1 text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 flex items-center justify-center gap-1"
+                        >
+                          <X size={12} /> Отклонить
                         </button>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {activeTab === 'bans' && canManage && (
+                <div className="space-y-2">
+                  {bans.length === 0 ? (
+                    <p className="text-sm text-gray-500 text-center py-6">
+                      Никто не заблокирован
+                    </p>
+                  ) : bans.map(b => (
+                    <div key={b.id} className="border border-gray-200 rounded-md p-2">
+                      <div className="flex items-center gap-2">
+                        <Avatar profile={getProfile(b.user_id)} size={28} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {getName(b.user_id)}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {formatAgo(b.created_at)} · забанил {getName(b.banned_by)}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setUnbanTarget({ user_id: b.user_id, name: getName(b.user_id) })}
+                        className="mt-2 w-full text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-100"
+                      >
+                        Разблокировать
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           </div>
@@ -470,6 +798,104 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
               className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed"
             >
               {transferring ? 'Передаём...' : 'Передать'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {kickTarget && (
+        <Modal onClose={() => !actionBusy && setKickTarget(null)}>
+          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Удалить участника?</h2>
+            <button onClick={() => !actionBusy && setKickTarget(null)} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
+          </div>
+          <div className="p-6">
+            <p className="text-sm text-gray-700">
+              Удалить <span className="font-semibold">{kickTarget.name}</span> из комнаты?
+              Этот пользователь сможет вернуться по коду, если вы поделитесь им снова.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+            <button
+              onClick={() => setKickTarget(null)}
+              disabled={actionBusy}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
+            >
+              Отмена
+            </button>
+            <button
+              onClick={confirmKick}
+              disabled={actionBusy}
+              className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300"
+            >
+              {actionBusy ? 'Удаляем...' : 'Подтвердить'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {banTarget && (
+        <Modal onClose={() => !actionBusy && setBanTarget(null)}>
+          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-red-700 flex items-center gap-2">
+              <Ban size={18} /> Заблокировать участника?
+            </h2>
+            <button onClick={() => !actionBusy && setBanTarget(null)} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
+          </div>
+          <div className="p-6 space-y-3">
+            <p className="text-sm text-gray-700">
+              Вы собираетесь заблокировать <span className="font-semibold">{banTarget.name}</span>.
+            </p>
+            <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">
+              Этот участник не сможет вернуться в комнату, даже если у него есть код.
+              Снять блокировку потом можно во вкладке «Блок-лист».
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+            <button
+              onClick={() => setBanTarget(null)}
+              disabled={actionBusy}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
+            >
+              Отмена
+            </button>
+            <button
+              onClick={confirmBan}
+              disabled={actionBusy}
+              className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300"
+            >
+              {actionBusy ? 'Блокируем...' : 'Заблокировать'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {unbanTarget && (
+        <Modal onClose={() => !actionBusy && setUnbanTarget(null)}>
+          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Разблокировать участника?</h2>
+            <button onClick={() => !actionBusy && setUnbanTarget(null)} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
+          </div>
+          <div className="p-6">
+            <p className="text-sm text-gray-700">
+              <span className="font-semibold">{unbanTarget.name}</span> снова сможет войти по коду
+              (или подать заявку, если комната закрытая).
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+            <button
+              onClick={() => setUnbanTarget(null)}
+              disabled={actionBusy}
+              className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
+            >
+              Отмена
+            </button>
+            <button
+              onClick={confirmUnban}
+              disabled={actionBusy}
+              className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300"
+            >
+              {actionBusy ? 'Разблокируем...' : 'Разблокировать'}
             </button>
           </div>
         </Modal>

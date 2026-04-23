@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowLeft, Users, Bell } from 'lucide-react';
+import { ArrowLeft, Users, Bell, Lock } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import Navbar from '@/components/Navbar';
 
@@ -18,7 +18,7 @@ export default async function TeamsPage() {
   // Получаем членства пользователя с данными комнат
   const { data: memberships } = await supabase
     .from('room_members')
-    .select('role, rooms(id, code, name)')
+    .select('role, rooms(id, code, name, is_private)')
     .eq('user_id', user.id);
 
   const rooms = (memberships || [])
@@ -69,7 +69,10 @@ export default async function TeamsPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold text-gray-900">{room.name}</h3>
+                      <h3 className="font-semibold text-gray-900 flex items-center gap-1.5">
+                        {room.is_private && <Lock size={14} className="text-gray-500" />}
+                        {room.name}
+                      </h3>
                       {room.unreadCount > 0 && (
                         <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-blue-100 text-blue-700 border border-blue-200 rounded-full">
                           <Bell size={10} /> {room.unreadCount}

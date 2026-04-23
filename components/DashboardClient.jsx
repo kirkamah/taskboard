@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { LayoutGrid, Plus, Users, LogIn, X, Copy } from 'lucide-react';
+import { LayoutGrid, Plus, Users, LogIn, X, Copy, Lock } from 'lucide-react';
 import { Modal } from '@/components/UI';
 
 export default function DashboardClient({ userName }) {
@@ -13,12 +13,13 @@ export default function DashboardClient({ userName }) {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
+  const [newRoomPrivate, setNewRoomPrivate] = useState(false);
   const [createdRoom, setCreatedRoom] = useState(null);
   const [creating, setCreating] = useState(false);
 
   const [joinCode, setJoinCode] = useState('');
   const [joinError, setJoinError] = useState('');
-  const [joinInfo, setJoinInfo] = useState(null); // { roomId, status, role } для already_member / owner
+  const [joinInfo, setJoinInfo] = useState(null); // { roomId, status, role } для already_member / owner / request_*
   const [joining, setJoining] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -40,7 +41,7 @@ export default function DashboardClient({ userName }) {
       const code = generateRoomCode();
       const { data, error } = await supabase
         .from('rooms')
-        .insert({ code, name: newRoomName.trim(), owner_id: user.id })
+        .insert({ code, name: newRoomName.trim(), owner_id: user.id, is_private: newRoomPrivate })
         .select()
         .single();
       if (!error) created = data;
@@ -67,13 +68,19 @@ export default function DashboardClient({ userName }) {
       return;
     }
 
+    // Бан — не раскрываем причину
+    if (data.status === 'banned') {
+      setJoinError('Не удалось присоединиться к комнате.');
+      return;
+    }
+
     // Если только что присоединился как новый участник — сразу в комнату
     if (data.status === 'joined') {
       router.push(`/room/${data.room_id}`);
       return;
     }
 
-    // Иначе показываем сообщение «вы уже там, как [роль]»
+    // request_created / request_exists / already_member / owner — показываем в плашке
     setJoinInfo({ roomId: data.room_id, status: data.status, role: data.role });
   };
 
@@ -86,6 +93,7 @@ export default function DashboardClient({ userName }) {
   const closeCreateModal = () => {
     setShowCreateModal(false);
     setNewRoomName('');
+    setNewRoomPrivate(false);
     setCreatedRoom(null);
   };
 
@@ -141,7 +149,17 @@ export default function DashboardClient({ userName }) {
           </button>
         </div>
         {joinError && <p className="text-sm text-red-600 mt-2">{joinError}</p>}
-        {joinInfo && (
+        {joinInfo && (joinInfo.status === 'request_created' || joinInfo.status === 'request_exists') && (
+          <div className="mt-3 border border-blue-200 bg-blue-50 rounded-lg p-3 flex items-start gap-2">
+            <Lock size={16} className="text-blue-700 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-blue-900">
+              {joinInfo.status === 'request_created'
+                ? 'Заявка отправлена. Ты получишь уведомление, когда её рассмотрят.'
+                : 'Твоя заявка уже ожидает рассмотрения.'}
+            </p>
+          </div>
+        )}
+        {joinInfo && (joinInfo.status === 'owner' || joinInfo.status === 'already_member') && (
           <div className="mt-3 border border-gray-300 bg-gray-50 rounded-lg p-3 flex items-center justify-between gap-3 flex-wrap">
             <p className="text-sm text-gray-700">
               {joinInfo.status === 'owner'
@@ -166,17 +184,35 @@ export default function DashboardClient({ userName }) {
                 <h2 className="text-lg font-semibold">Новая комната</h2>
                 <button onClick={closeCreateModal} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
               </div>
-              <div className="p-6">
-                <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Название комнаты</label>
-                <input
-                  type="text"
-                  value={newRoomName}
-                  onChange={(e) => setNewRoomName(e.target.value)}
-                  placeholder="Например: Команда разработки"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900"
-                  autoFocus
-                  onKeyDown={(e) => e.key === 'Enter' && handleCreateRoom()}
-                />
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Название комнаты</label>
+                  <input
+                    type="text"
+                    value={newRoomName}
+                    onChange={(e) => setNewRoomName(e.target.value)}
+                    placeholder="Например: Команда разработки"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900"
+                    autoFocus
+                    onKeyDown={(e) => e.key === 'Enter' && handleCreateRoom()}
+                  />
+                </div>
+                <label className="flex items-start gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={newRoomPrivate}
+                    onChange={(e) => setNewRoomPrivate(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-gray-900"
+                  />
+                  <span>
+                    <span className="text-sm font-medium text-gray-900 flex items-center gap-1.5">
+                      <Lock size={14} /> Закрытая комната
+                    </span>
+                    <span className="text-xs text-gray-500 block mt-0.5">
+                      Новые участники будут отправлять заявку на вступление
+                    </span>
+                  </span>
+                </label>
               </div>
               <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
                 <button onClick={closeCreateModal} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100">Отмена</button>

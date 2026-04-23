@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
   LogOut, User, ChevronDown, ChevronUp, Bell, MessageSquare, Check, X, Crown, ArrowLeft, KeyRound,
+  UserPlus, UserCheck, UserX,
 } from 'lucide-react';
 import LinkifiedText from './LinkifiedText';
 import Avatar from './Avatar';
@@ -73,7 +74,10 @@ export default function Navbar({ userName, userId, userProfile }) {
   };
 
   const goToTask = (n) => {
-    if (n.room_id) router.push(`/room/${n.room_id}`);
+    if (n.room_id) {
+      const suffix = n.type === 'join_request_created' ? '?tab=requests' : '';
+      router.push(`/room/${n.room_id}${suffix}`);
+    }
     closeMenu();
   };
 
@@ -97,6 +101,9 @@ export default function Navbar({ userName, userId, userProfile }) {
       case 'request_rejected': return { label: 'Запрос отклонён', Icon: X, color: 'text-red-600' };
       case 'task_completed': return { label: 'Задача выполнена', Icon: Check, color: 'text-green-600' };
       case 'ownership_transferred': return { label: 'Передача владения', Icon: Crown, color: 'text-amber-600' };
+      case 'join_request_created': return { label: 'Заявка на вступление', Icon: UserPlus, color: 'text-blue-600' };
+      case 'join_request_approved': return { label: 'Заявка одобрена', Icon: UserCheck, color: 'text-green-600' };
+      case 'join_request_rejected': return { label: 'Заявка отклонена', Icon: UserX, color: 'text-red-600' };
       default: return { label: 'Уведомление', Icon: MessageSquare, color: 'text-gray-600' };
     }
   };
@@ -191,13 +198,27 @@ export default function Navbar({ userName, userId, userProfile }) {
                     const meta = typeMeta(n.type);
                     const expanded = expandedId === n.id;
                     const isOwnership = n.type === 'ownership_transferred';
+                    const isJoinRequest = n.type === 'join_request_created'
+                      || n.type === 'join_request_approved'
+                      || n.type === 'join_request_rejected';
                     const roomName = n.payload?.room_name || 'Комната';
-                    const taskTitle = isOwnership
-                      ? `Вам передали владение комнатой «${roomName}»`
-                      : (n.payload?.task_title || 'Задача');
+                    const requesterName = n.payload?.requester_name || 'Пользователь';
+                    let taskTitle;
+                    if (isOwnership) {
+                      taskTitle = `Вам передали владение комнатой «${roomName}»`;
+                    } else if (n.type === 'join_request_created') {
+                      taskTitle = `${requesterName} хочет вступить в «${roomName}»`;
+                    } else if (n.type === 'join_request_approved') {
+                      taskTitle = `Ваша заявка в «${roomName}» одобрена`;
+                    } else if (n.type === 'join_request_rejected') {
+                      taskTitle = `Ваша заявка в «${roomName}» отклонена`;
+                    } else {
+                      taskTitle = n.payload?.task_title || 'Задача';
+                    }
                     const requestNote = n.payload?.request_note;
                     const responseNote = n.payload?.response_note;
                     const completionNote = n.payload?.completion_note;
+                    const goLabel = isOwnership || isJoinRequest ? 'Перейти к комнате' : 'Перейти к задаче';
                     const { Icon } = meta;
 
                     return (
@@ -252,7 +273,7 @@ export default function Navbar({ userName, userId, userProfile }) {
                               onClick={() => goToTask(n)}
                               className="w-full px-3 py-2 text-sm bg-gray-900 text-white rounded-md hover:bg-gray-800"
                             >
-                              {isOwnership ? 'Перейти к комнате' : 'Перейти к задаче'}
+                              {n.type === 'join_request_created' ? 'Перейти к заявкам' : goLabel}
                             </button>
                           </div>
                         )}
