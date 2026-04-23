@@ -113,7 +113,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
   // Realtime: состав участников и сама комната
   useEffect(() => {
     const channel = supabase
-      .channel(`members-${room.id}`)
+      .channel(`members-${room.id}-${Math.random().toString(36).slice(2, 10)}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'room_members', filter: `room_id=eq.${room.id}` },
         async (payload) => {
@@ -154,7 +154,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
     };
     load();
     const channel = supabase
-      .channel(`tags-${room.id}`)
+      .channel(`tags-${room.id}-${Math.random().toString(36).slice(2, 10)}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'room_tags', filter: `room_id=eq.${room.id}` },
         () => load()
@@ -183,7 +183,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
     };
     load();
     const channel = supabase
-      .channel(`requests-${room.id}`)
+      .channel(`requests-${room.id}-${Math.random().toString(36).slice(2, 10)}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'room_join_requests', filter: `room_id=eq.${room.id}` },
         () => load()
@@ -212,7 +212,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
     };
     load();
     const channel = supabase
-      .channel(`bans-${room.id}`)
+      .channel(`bans-${room.id}-${Math.random().toString(36).slice(2, 10)}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'room_bans', filter: `room_id=eq.${room.id}` },
         () => load()
