@@ -65,8 +65,10 @@ export async function POST(request, { params }) {
     return apiError(400, 'invalid_due_at', 'due_at must be a valid ISO 8601 timestamp');
   }
 
+  // tasks check constraint: exactly one of (owner_id, room_id) is set.
+  // For room tasks, owner_id must be NULL.
   const payload = {
-    owner_id: userId,
+    owner_id: null,
     room_id: params.id,
     title,
     description: typeof body.description === 'string' ? body.description : '',

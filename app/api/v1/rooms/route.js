@@ -56,10 +56,8 @@ export async function POST(request) {
   }
   if (!created) return apiError(500, 'code_collision', 'Failed to allocate a unique room code, please retry');
 
-  const { error: memberError } = await supabase
-    .from('room_members')
-    .insert({ room_id: created.id, user_id: userId, role: 'owner' });
-  if (memberError) return apiError(500, 'db_error', memberError.message);
+  // The on_room_created trigger automatically inserts the owner into room_members,
+  // so we don't add a row ourselves — that would hit a primary-key conflict.
 
   return apiOk({ room: serializeRoom(created, 'owner') }, 201);
 }
