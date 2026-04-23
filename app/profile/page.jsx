@@ -12,11 +12,11 @@ export default async function ProfilePage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name, avatar_emoji, avatar_color')
+    .select('display_name, avatar_emoji, avatar_color, theme')
     .eq('id', user.id)
     .single();
 
-  const safeProfile = profile || { display_name: user.email.split('@')[0], avatar_emoji: null, avatar_color: 'gray' };
+  const safeProfile = profile || { display_name: user.email.split('@')[0], avatar_emoji: null, avatar_color: 'gray', theme: 'light' };
   const userName = safeProfile.display_name || user.email.split('@')[0];
 
   return (

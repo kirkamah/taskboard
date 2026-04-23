@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import LinkifiedText from './LinkifiedText';
 import Avatar from './Avatar';
+import { applyTheme } from '@/lib/theme';
 
 export default function Navbar({ userName, userId, userProfile }) {
   const router = useRouter();
@@ -32,6 +33,23 @@ export default function Navbar({ userName, userId, userProfile }) {
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Sync the per-user theme once Navbar mounts. The pre-hydration script in
+  // app/layout.jsx already applied whatever was cached in localStorage; this
+  // catches first-visit-on-this-device or theme changes made on another one.
+  useEffect(() => {
+    if (!userId) return;
+    let alive = true;
+    (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('theme')
+        .eq('id', userId)
+        .maybeSingle();
+      if (alive && data?.theme) applyTheme(data.theme);
+    })();
+    return () => { alive = false; };
+  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
