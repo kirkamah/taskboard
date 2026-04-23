@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeft, Users, Copy, Eye, Shield, Crown, Trash2, Edit2, UserCheck, X,
-  Lock, Unlock, Ban, UserX, MoreVertical, ShieldBan, Inbox, CheckCircle2,
+  ArrowLeft, Users, Copy, Eye, Shield, Crown, Trash2, UserCheck, X,
+  Lock, Ban, UserX, MoreVertical, ShieldBan, Inbox, CheckCircle2, Settings,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import BoardBody from '@/components/BoardBody';
@@ -53,12 +53,13 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
   const [showMembers, setShowMembers] = useState(true);
   const [activeTab, setActiveTab] = useState(searchParams?.get('tab') === 'requests' ? 'requests' : 'members');
   const [copied, setCopied] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsNameInput, setSettingsNameInput] = useState(room.name);
+  const [savingName, setSavingName] = useState(false);
+  const [settingsCopied, setSettingsCopied] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmText, setConfirmText] = useState('');
-  const [showRenameModal, setShowRenameModal] = useState(false);
-  const [renameText, setRenameText] = useState('');
-  const [renaming, setRenaming] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferRecipient, setTransferRecipient] = useState(null);
   const [transferConfirmText, setTransferConfirmText] = useState('');
@@ -249,22 +250,29 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
     router.push('/dashboard');
   };
 
-  const renameRoom = async () => {
-    const trimmed = renameText.trim();
-    if (!trimmed || trimmed === roomName) {
-      setShowRenameModal(false);
-      return;
-    }
-    setRenaming(true);
+  const saveRoomName = async () => {
+    const trimmed = settingsNameInput.trim();
+    if (!trimmed || trimmed === roomName) return;
+    setSavingName(true);
     const { error } = await supabase.from('rooms').update({ name: trimmed }).eq('id', room.id);
-    setRenaming(false);
+    setSavingName(false);
     if (error) {
       alert('Не удалось переименовать комнату: ' + error.message);
       return;
     }
     setRoomName(trimmed);
-    setShowRenameModal(false);
+    flash('Название сохранено');
   };
+
+  const openSettings = () => {
+    setSettingsNameInput(roomName);
+    setShowSettings(true);
+  };
+
+  // Если владение передано — закрываем настройки, они больше не доступны
+  useEffect(() => {
+    if (!canManage && showSettings) setShowSettings(false);
+  }, [canManage, showSettings]);
 
   const transferOwnership = async () => {
     if (!transferRecipient || transferConfirmText.trim() !== roomName) return;
@@ -371,6 +379,16 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
           <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
             {isPrivate && <Lock size={18} className="text-gray-500" />}
             {roomName}
+            {canManage && (
+              <button
+                onClick={openSettings}
+                className="ml-1 p-1.5 rounded-md text-gray-400 hover:text-gray-900 hover:bg-gray-100"
+                title="Настройки комнаты"
+                aria-label="Настройки комнаты"
+              >
+                <Settings size={18} />
+              </button>
+            )}
           </h1>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             <span className="text-sm text-gray-500">Код:</span>
@@ -395,37 +413,6 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
             >
               Покинуть комнату
             </button>
-          )}
-          {canManage && (
-            <>
-              <button
-                onClick={togglePrivate}
-                disabled={togglingPrivate}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-100 flex items-center gap-2 disabled:opacity-60"
-                title={isPrivate ? 'Сделать открытой' : 'Сделать закрытой'}
-              >
-                {isPrivate ? <Unlock size={16} /> : <Lock size={16} />}
-                {isPrivate ? 'Открыть' : 'Закрыть'}
-              </button>
-              <button
-                onClick={() => { setShowRenameModal(true); setRenameText(roomName); }}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-100 flex items-center gap-2"
-              >
-                <Edit2 size={16} /> Переименовать
-              </button>
-              <button
-                onClick={() => { setShowTransferModal(true); setTransferRecipient(null); setTransferConfirmText(''); }}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-100 flex items-center gap-2"
-              >
-                <UserCheck size={16} /> Передать владение
-              </button>
-              <button
-                onClick={() => { setShowDeleteModal(true); setConfirmText(''); }}
-                className="px-4 py-2 text-sm border border-red-300 text-red-600 rounded-lg bg-white hover:bg-red-50 flex items-center gap-2"
-              >
-                <Trash2 size={16} /> Удалить комнату
-              </button>
-            </>
           )}
           <button
             onClick={() => setShowMembers(!showMembers)}
@@ -692,39 +679,111 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
         </Modal>
       )}
 
-      {showRenameModal && (
-        <Modal onClose={() => setShowRenameModal(false)}>
+      {showSettings && (
+        <Modal onClose={() => setShowSettings(false)}>
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Переименовать комнату</h2>
-            <button onClick={() => setShowRenameModal(false)} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Settings size={18} /> Настройки комнаты
+            </h2>
+            <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
           </div>
-          <div className="p-6">
-            <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
-              Новое название
-            </label>
-            <input
-              type="text"
-              value={renameText}
-              onChange={(e) => setRenameText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') renameRoom(); }}
-              placeholder={roomName}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900"
-              autoFocus
-            />
+
+          <div className="p-6 space-y-6">
+            {/* Секция «Общие» */}
+            <section className="space-y-4">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Общие</h3>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
+                  Название комнаты
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={settingsNameInput}
+                    onChange={(e) => setSettingsNameInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') saveRoomName(); }}
+                    className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900"
+                  />
+                  <button
+                    onClick={saveRoomName}
+                    disabled={savingName || !settingsNameInput.trim() || settingsNameInput.trim() === roomName}
+                    className="flex-shrink-0 px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    {savingName ? 'Сохраняем...' : 'Сохранить'}
+                  </button>
+                </div>
+              </div>
+
+              <label className="flex items-start gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isPrivate}
+                  disabled={togglingPrivate}
+                  onChange={togglePrivate}
+                  className="mt-0.5 w-4 h-4 accent-gray-900 flex-shrink-0"
+                />
+                <span className="flex-1">
+                  <span className="text-sm font-medium text-gray-900 flex items-center gap-1.5">
+                    <Lock size={14} /> Закрытая комната
+                  </span>
+                  <span className="text-xs text-gray-500 block mt-0.5">
+                    Новые участники будут отправлять заявку на вступление вместо прямого входа.
+                  </span>
+                </span>
+              </label>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
+                  Код комнаты
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={room.code}
+                    readOnly
+                    className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono tracking-widest text-center"
+                  />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard?.writeText(room.code);
+                      setSettingsCopied(true);
+                      setTimeout(() => setSettingsCopied(false), 1500);
+                    }}
+                    className="flex-shrink-0 px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 flex items-center gap-2"
+                  >
+                    <Copy size={14} /> {settingsCopied ? 'Скопировано' : 'Скопировать'}
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {/* Секция «Опасная зона» */}
+            <section className="border border-red-200 rounded-lg p-4 space-y-3 bg-red-50/30">
+              <h3 className="text-xs font-semibold text-red-700 uppercase tracking-wide">Опасная зона</h3>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={() => { setShowTransferModal(true); setTransferRecipient(null); setTransferConfirmText(''); }}
+                  className="flex-1 px-4 py-2 text-sm border border-red-300 text-red-700 rounded-lg bg-white hover:bg-red-50 flex items-center justify-center gap-2"
+                >
+                  <UserCheck size={16} /> Передать владение
+                </button>
+                <button
+                  onClick={() => { setShowDeleteModal(true); setConfirmText(''); }}
+                  className="flex-1 px-4 py-2 text-sm border border-red-300 text-red-700 rounded-lg bg-white hover:bg-red-50 flex items-center justify-center gap-2"
+                >
+                  <Trash2 size={16} /> Удалить комнату
+                </button>
+              </div>
+            </section>
           </div>
+
           <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
             <button
-              onClick={() => setShowRenameModal(false)}
+              onClick={() => setShowSettings(false)}
               className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
             >
-              Отмена
-            </button>
-            <button
-              onClick={renameRoom}
-              disabled={!renameText.trim() || renameText.trim() === roomName || renaming}
-              className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed"
-            >
-              {renaming ? 'Сохраняем...' : 'Сохранить'}
+              Закрыть
             </button>
           </div>
         </Modal>
