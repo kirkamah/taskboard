@@ -447,8 +447,8 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
           {canManage && <TagsPanel roomId={room.id} tags={tags} />}
 
           {/* Переключатель вкладок */}
-          <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            <div className="flex border-b border-gray-200 bg-gray-50 text-xs">
+          <div className="bg-white border border-gray-200 rounded-lg">
+            <div className="flex border-b border-gray-200 bg-gray-50 text-xs rounded-t-lg">
               <button
                 onClick={() => setActiveTab('members')}
                 className={`flex-1 px-3 py-2 flex items-center justify-center gap-1 ${activeTab === 'members' ? 'bg-white text-gray-900 font-semibold' : 'text-gray-600 hover:bg-gray-100'}`}
@@ -515,7 +515,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, user
                                 {memberMenuOpen === m.user_id && (
                                   <div
                                     onClick={(e) => e.stopPropagation()}
-                                    className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-40 py-1 text-sm"
+                                    className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 text-sm"
                                   >
                                     {showRoleBtn && m.role === 'viewer' && (
                                       <button
