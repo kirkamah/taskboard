@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeft, Users, Copy, Crown, Trash2, UserCheck, X, Shield,
-  Lock, Ban, UserX, MoreVertical, ShieldBan, Inbox, CheckCircle2, Settings, ChevronRight,
+  ArrowLeft, Users, Copy, Crown, Trash2, UserCheck, X, Check,
+  Lock, Ban, UserX, MoreVertical, ShieldBan, Inbox, CheckCircle2, Settings,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import BoardBody from '@/components/BoardBody';
@@ -104,7 +104,6 @@ export default function RoomClient({ room, initialMembers, initialProfiles, init
   const [unbanTarget, setUnbanTarget] = useState(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [memberMenuOpen, setMemberMenuOpen] = useState(null); // user_id
-  const [roleSubmenuOpen, setRoleSubmenuOpen] = useState(false);
 
   const rolesById = roles.reduce((acc, r) => { acc[r.id] = r; return acc; }, {});
   const enrichedMembers = members.map((m) => enrichMember(m, rolesById));
@@ -428,10 +427,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, init
 
   useEffect(() => {
     if (!memberMenuOpen) return;
-    const handler = () => {
-      setMemberMenuOpen(null);
-      setRoleSubmenuOpen(false);
-    };
+    const handler = () => setMemberMenuOpen(null);
     document.addEventListener('click', handler);
     return () => document.removeEventListener('click', handler);
   }, [memberMenuOpen]);
@@ -575,11 +571,11 @@ export default function RoomClient({ room, initialMembers, initialProfiles, init
                             {hasActions && (
                               <div className="relative">
                                 <button
+                                  type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     const next = memberMenuOpen === m.user_id ? null : m.user_id;
                                     setMemberMenuOpen(next);
-                                    setRoleSubmenuOpen(false);
                                   }}
                                   className="p-1 rounded hover:bg-gray-100 text-gray-500"
                                   aria-label="Меню"
@@ -589,49 +585,44 @@ export default function RoomClient({ room, initialMembers, initialProfiles, init
                                 {memberMenuOpen === m.user_id && (
                                   <div
                                     onClick={(e) => e.stopPropagation()}
-                                    className="absolute right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 text-sm"
+                                    className="absolute right-0 mt-1 w-60 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 text-sm"
                                   >
                                     {showRoleBtn && (
-                                      <div>
-                                        <button
-                                          onClick={() => setRoleSubmenuOpen((v) => !v)}
-                                          className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center gap-2 text-gray-700 justify-between"
-                                        >
-                                          <span className="flex items-center gap-2">
-                                            <Shield size={12} /> Изменить роль
-                                          </span>
-                                          <ChevronRight size={12} className={`transition-transform ${roleSubmenuOpen ? 'rotate-90' : ''}`} />
-                                        </button>
-                                        {roleSubmenuOpen && (
-                                          <div className="max-h-60 overflow-y-auto border-y border-gray-100 bg-gray-50">
-                                            {roles.map((r) => {
-                                              const current = m.role_id === r.id;
-                                              return (
-                                                <button
-                                                  key={r.id}
-                                                  disabled={current}
-                                                  onClick={() => {
-                                                    assignRole(m.user_id, r.id);
-                                                    setMemberMenuOpen(null);
-                                                    setRoleSubmenuOpen(false);
-                                                  }}
-                                                  className={`w-full text-left px-5 py-1.5 hover:bg-white flex items-center gap-2 ${current ? 'opacity-60 cursor-default' : ''}`}
-                                                >
-                                                  <span
-                                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-black/10"
-                                                    style={{ backgroundColor: r.color }}
-                                                  />
-                                                  <span className="truncate flex-1">{r.name}</span>
-                                                  {current && <span className="text-[10px] text-gray-500">сейчас</span>}
-                                                </button>
-                                              );
-                                            })}
-                                          </div>
-                                        )}
+                                      <div className="py-1">
+                                        <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                                          Роль
+                                        </div>
+                                        {roles.map((r) => {
+                                          const current = m.role_id === r.id;
+                                          return (
+                                            <button
+                                              key={r.id}
+                                              type="button"
+                                              disabled={current}
+                                              onClick={() => {
+                                                if (current) return;
+                                                assignRole(m.user_id, r.id);
+                                                setMemberMenuOpen(null);
+                                              }}
+                                              className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${current ? 'bg-gray-50 cursor-default' : 'hover:bg-gray-100'}`}
+                                            >
+                                              <span
+                                                className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-black/10"
+                                                style={{ backgroundColor: r.color }}
+                                              />
+                                              <span className="truncate flex-1 text-gray-800">{r.name}</span>
+                                              {current && <Check size={12} className="text-gray-500" />}
+                                            </button>
+                                          );
+                                        })}
                                       </div>
+                                    )}
+                                    {showRoleBtn && (showKickBtn || showBanBtn) && (
+                                      <div className="my-1 border-t border-gray-200" />
                                     )}
                                     {showKickBtn && (
                                       <button
+                                        type="button"
                                         onClick={() => { setKickTarget({ user_id: m.user_id, name: memberName }); setMemberMenuOpen(null); }}
                                         className="w-full text-left px-3 py-2 hover:bg-gray-100 flex items-center gap-2 text-gray-700"
                                       >
@@ -640,6 +631,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, init
                                     )}
                                     {showBanBtn && (
                                       <button
+                                        type="button"
                                         onClick={() => { setBanTarget({ user_id: m.user_id, name: memberName }); setMemberMenuOpen(null); }}
                                         className="w-full text-left px-3 py-2 hover:bg-red-50 flex items-center gap-2 text-red-600"
                                       >
