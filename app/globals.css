@@ -152,7 +152,7 @@ html[data-theme="cosmic"] {
 
 /* === Tailwind utility overrides =========================================
    Fire under dark/cosmic/parchment — the three themes that remap the core
-   gray palette onto --bg-*/--fg-*/--accent tokens. Light theme falls
+   gray palette onto --bg-, --fg-, --accent tokens. Light theme falls
    through to stock Tailwind. Parchment is light-on-cream but still needs
    these so .bg-white surfaces read as parchment (not stark white) and
    gray ink becomes sepia. Semantic tints (red/green/blue/amber below)
