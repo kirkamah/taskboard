@@ -68,7 +68,7 @@ export default function TaskFilters({ scope, filters, onChange, members = [], pr
     chips.push({ key: 'due', label: DUE_LABELS[filters.due] || filters.due, clear: () => set({ due: null }) });
   }
   if (filters.quadrant) {
-    const QUAD_LABELS = { do: 'Сделать сразу', plan: 'Запланировать', delegate: 'Делегировать', drop: 'Не делать' };
+    const QUAD_LABELS = { do: 'Важно и срочно', plan: 'Важно, не срочно', delegate: 'Не важно, срочно', drop: 'Не важно, не срочно' };
     chips.push({ key: 'quad', label: QUAD_LABELS[filters.quadrant] || filters.quadrant, clear: () => set({ quadrant: null }) });
   }
 
@@ -143,10 +143,10 @@ export default function TaskFilters({ scope, filters, onChange, members = [], pr
               </FilterSection>
 
               <FilterSection title="Квадрант">
-                <PickPill active={filters.quadrant === 'do'} onClick={() => set({ quadrant: filters.quadrant === 'do' ? null : 'do' })}>Сделать сразу</PickPill>
-                <PickPill active={filters.quadrant === 'plan'} onClick={() => set({ quadrant: filters.quadrant === 'plan' ? null : 'plan' })}>Запланировать</PickPill>
-                <PickPill active={filters.quadrant === 'delegate'} onClick={() => set({ quadrant: filters.quadrant === 'delegate' ? null : 'delegate' })}>Делегировать</PickPill>
-                <PickPill active={filters.quadrant === 'drop'} onClick={() => set({ quadrant: filters.quadrant === 'drop' ? null : 'drop' })}>Не делать</PickPill>
+                <PickPill active={filters.quadrant === 'do'} onClick={() => set({ quadrant: filters.quadrant === 'do' ? null : 'do' })}>Важно и срочно</PickPill>
+                <PickPill active={filters.quadrant === 'plan'} onClick={() => set({ quadrant: filters.quadrant === 'plan' ? null : 'plan' })}>Важно, не срочно</PickPill>
+                <PickPill active={filters.quadrant === 'delegate'} onClick={() => set({ quadrant: filters.quadrant === 'delegate' ? null : 'delegate' })}>Не важно, срочно</PickPill>
+                <PickPill active={filters.quadrant === 'drop'} onClick={() => set({ quadrant: filters.quadrant === 'drop' ? null : 'drop' })}>Не важно, не срочно</PickPill>
               </FilterSection>
 
               <div className="flex items-center justify-between pt-2 border-t border-gray-100">
