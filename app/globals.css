@@ -316,6 +316,52 @@ html[data-theme="cosmic"] .bg-red-50\/30 { background-color: rgba(239, 68, 68, 0
 html[data-theme="dark"] .bg-blue-50\/40,
 html[data-theme="cosmic"] .bg-blue-50\/40 { background-color: rgba(59, 130, 246, 0.12); }
 
+/* === Tag chip palette ===================================================
+   Tags render as <span class="tb-tag" data-color="..."> so the palette is
+   decoupled from Tailwind color utilities. That isolates tags from the
+   .text-*-700 / .bg-*-100 overrides above, which otherwise lightened tag
+   text to near-illegibility on dark backgrounds. Per-color rules below
+   define the full set for light and for dark/cosmic themes. */
+
+.tb-tag {
+  border: 1px solid transparent;
+  font-weight: 500;
+}
+
+/* Light theme — dark text on soft pastel bg, clearly visible border */
+.tb-tag[data-color="gray"]   { background: #e5e7eb; color: #111827; border-color: #9ca3af; }
+.tb-tag[data-color="red"]    { background: #fee2e2; color: #7f1d1d; border-color: #f87171; }
+.tb-tag[data-color="orange"] { background: #ffedd5; color: #7c2d12; border-color: #fb923c; }
+.tb-tag[data-color="amber"]  { background: #fef3c7; color: #78350f; border-color: #fbbf24; }
+.tb-tag[data-color="green"]  { background: #dcfce7; color: #14532d; border-color: #4ade80; }
+.tb-tag[data-color="teal"]   { background: #ccfbf1; color: #134e4a; border-color: #2dd4bf; }
+.tb-tag[data-color="blue"]   { background: #dbeafe; color: #1e3a8a; border-color: #60a5fa; }
+.tb-tag[data-color="indigo"] { background: #e0e7ff; color: #312e81; border-color: #818cf8; }
+.tb-tag[data-color="purple"] { background: #f3e8ff; color: #581c87; border-color: #c084fc; }
+.tb-tag[data-color="pink"]   { background: #fce7f3; color: #831843; border-color: #f472b6; }
+
+/* Dark / cosmic themes — translucent color bg over dark page, light text */
+html[data-theme="dark"]   .tb-tag[data-color="gray"],
+html[data-theme="cosmic"] .tb-tag[data-color="gray"]   { background: rgba(148, 163, 184, 0.22); color: #f1f5f9; border-color: rgba(148, 163, 184, 0.65); }
+html[data-theme="dark"]   .tb-tag[data-color="red"],
+html[data-theme="cosmic"] .tb-tag[data-color="red"]    { background: rgba(239, 68, 68, 0.25);  color: #fecaca; border-color: rgba(239, 68, 68, 0.70); }
+html[data-theme="dark"]   .tb-tag[data-color="orange"],
+html[data-theme="cosmic"] .tb-tag[data-color="orange"] { background: rgba(249, 115, 22, 0.25); color: #fed7aa; border-color: rgba(249, 115, 22, 0.70); }
+html[data-theme="dark"]   .tb-tag[data-color="amber"],
+html[data-theme="cosmic"] .tb-tag[data-color="amber"]  { background: rgba(245, 158, 11, 0.25); color: #fde68a; border-color: rgba(245, 158, 11, 0.70); }
+html[data-theme="dark"]   .tb-tag[data-color="green"],
+html[data-theme="cosmic"] .tb-tag[data-color="green"]  { background: rgba(34, 197, 94, 0.25);  color: #bbf7d0; border-color: rgba(34, 197, 94, 0.70); }
+html[data-theme="dark"]   .tb-tag[data-color="teal"],
+html[data-theme="cosmic"] .tb-tag[data-color="teal"]   { background: rgba(20, 184, 166, 0.25); color: #99f6e4; border-color: rgba(20, 184, 166, 0.70); }
+html[data-theme="dark"]   .tb-tag[data-color="blue"],
+html[data-theme="cosmic"] .tb-tag[data-color="blue"]   { background: rgba(59, 130, 246, 0.25); color: #bfdbfe; border-color: rgba(59, 130, 246, 0.70); }
+html[data-theme="dark"]   .tb-tag[data-color="indigo"],
+html[data-theme="cosmic"] .tb-tag[data-color="indigo"] { background: rgba(99, 102, 241, 0.28); color: #c7d2fe; border-color: rgba(99, 102, 241, 0.70); }
+html[data-theme="dark"]   .tb-tag[data-color="purple"],
+html[data-theme="cosmic"] .tb-tag[data-color="purple"] { background: rgba(168, 85, 247, 0.28); color: #e9d5ff; border-color: rgba(168, 85, 247, 0.70); }
+html[data-theme="dark"]   .tb-tag[data-color="pink"],
+html[data-theme="cosmic"] .tb-tag[data-color="pink"]   { background: rgba(236, 72, 153, 0.25); color: #fbcfe8; border-color: rgba(236, 72, 153, 0.70); }
+
 /* Cosmic: glow on primary interactive elements */
 html[data-theme="cosmic"] .bg-gray-900:not(:disabled):not([disabled]):hover {
   box-shadow: 0 0 14px rgba(192, 38, 211, 0.45);
