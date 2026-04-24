@@ -8,6 +8,8 @@ import Avatar from './Avatar';
 import Tag from './Tag';
 import { createClient } from '@/lib/supabase/client';
 import { hasPermission } from '@/lib/permissions';
+import TaskFilters from './TaskFilters';
+import { DEFAULT_FILTERS, loadFilters, saveFilters, applyFilters, hasActiveFilters } from '@/lib/taskFilters';
 
 /**
  * BoardBody — универсальный компонент доски задач.
@@ -38,7 +40,20 @@ export default function BoardBody({
   const [editingTask, setEditingTask] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [draggingTaskId, setDraggingTaskId] = useState(null);
+
+  // Load persisted per-user filters for this board. Scope id = roomId for
+  // rooms, userId for the personal board — keeps keys disjoint.
+  const filterScopeId = scope === 'room' ? roomId : userId;
+  useEffect(() => {
+    setFilters(loadFilters(scope, filterScopeId));
+  }, [scope, filterScopeId]);
+
+  const updateFilters = (next) => {
+    setFilters(next);
+    saveFilters(scope, filterScopeId, next);
+  };
   const [dragOverQuadrant, setDragOverQuadrant] = useState(null);
   // Модалка для работы с запросами на выполнение:
   //   { mode: 'create', taskId } — отправка запроса назначенным
@@ -198,8 +213,14 @@ export default function BoardBody({
     { important: false, urgent: false, title: 'Не важно, не срочно' }
   ];
 
-  const getTasksFor = (imp, urg) => tasks.filter(t => t.important === imp && t.urgent === urg && !t.done);
-  const completedTasks = tasks.filter(t => t.done);
+  // Per-user view filters: apply before quadrant split, so counts and empty
+  // states reflect what the current user has chosen to see.
+  const visibleTasks = applyFilters(tasks, filters, userId);
+  const filtersActive = hasActiveFilters(filters);
+  const hiddenCount = tasks.length - visibleTasks.length;
+
+  const getTasksFor = (imp, urg) => visibleTasks.filter(t => t.important === imp && t.urgent === urg && !t.done);
+  const completedTasks = visibleTasks.filter(t => t.done);
 
   const openAdd = () => {
     setFormData({ title: '', description: '', important: true, urgent: true, due_at: '', assignees: [], tags: [], checklist: [] });
@@ -454,9 +475,21 @@ export default function BoardBody({
 
   return (
     <>
+      <TaskFilters
+        scope={scope}
+        filters={filters}
+        onChange={updateFilters}
+        members={members}
+        profiles={profiles}
+        tags={tags}
+        userId={userId}
+      />
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="text-sm text-gray-500">
-          {tasks.filter(t => !t.done).length} активных · {completedTasks.length} выполнено
+          {visibleTasks.filter(t => !t.done).length} активных · {completedTasks.length} выполнено
+          {filtersActive && hiddenCount > 0 && (
+            <span className="ml-2 text-gray-400">· фильтры скрывают {hiddenCount}</span>
+          )}
           {!canEdit && <span className="ml-2 text-yellow-700">· Только просмотр — у вашей роли нет прав на изменение</span>}
         </div>
         <div className="flex gap-2">
