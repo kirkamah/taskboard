@@ -39,19 +39,65 @@ export async function GET(request) {
         },
         Task: {
           type: 'object',
-          required: ['id', 'title', 'description', 'important', 'urgent', 'done', 'created_at'],
+          required: ['id', 'title', 'description', 'important', 'urgent', 'done', 'created_at', 'tags'],
           properties: {
             id: { type: 'string', format: 'uuid' },
             title: { type: 'string' },
             description: { type: 'string' },
-            important: { type: 'boolean' },
+            important: { type: 'boolean', description: 'Квадрант матрицы Эйзенхауэра. important+urgent=Сделать сразу, important=Запланировать, urgent=Делегировать, ни то ни другое=Не делать. См. также POST /tasks/{id}/move.' },
             urgent: { type: 'boolean' },
             done: { type: 'boolean' },
             room_id: { type: ['string', 'null'], format: 'uuid' },
             owner_id: { type: ['string', 'null'], format: 'uuid' },
             due_at: { type: ['string', 'null'], format: 'date-time' },
             created_at: { type: 'string', format: 'date-time' },
-            created_by_api_key_id: { type: ['string', 'null'], format: 'uuid', description: 'Если не null — задача создана через API (не через UI).' }
+            created_by_api_key_id: { type: ['string', 'null'], format: 'uuid', description: 'Если не null — задача создана через API (не через UI).' },
+            tags: { type: 'array', items: { $ref: '#/components/schemas/Tag' }, description: 'Теги, назначенные задаче.' }
+          }
+        },
+        Tag: {
+          type: 'object',
+          required: ['id', 'name', 'color'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            name: { type: 'string', maxLength: 24 },
+            color: { type: 'string', enum: ['gray', 'red', 'orange', 'amber', 'green', 'teal', 'blue', 'indigo', 'purple', 'pink'] },
+            room_id: { type: ['string', 'null'], format: 'uuid', description: 'Если задан — тег комнаты. Иначе личный тег (тогда owner_id=владелец).' },
+            owner_id: { type: ['string', 'null'], format: 'uuid' }
+          }
+        },
+        CreateTagBody: {
+          type: 'object',
+          required: ['name'],
+          properties: {
+            name: { type: 'string', maxLength: 24 },
+            color: { type: 'string', enum: ['gray', 'red', 'orange', 'amber', 'green', 'teal', 'blue', 'indigo', 'purple', 'pink'], default: 'gray' },
+            room_id: { type: ['string', 'null'], format: 'uuid', description: 'Если задан — тег будет принадлежать комнате (нужно право manage_tags). Иначе создастся личный тег.' }
+          }
+        },
+        PatchTagBody: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', maxLength: 24 },
+            color: { type: 'string', enum: ['gray', 'red', 'orange', 'amber', 'green', 'teal', 'blue', 'indigo', 'purple', 'pink'] }
+          }
+        },
+        MoveTaskBody: {
+          type: 'object',
+          required: ['quadrant'],
+          properties: {
+            quadrant: {
+              type: 'string',
+              enum: ['do', 'plan', 'delegate', 'drop'],
+              description: 'do = важно+срочно (Сделать сразу); plan = важно (Запланировать); delegate = срочно (Делегировать); drop = ни важно, ни срочно (Не делать).'
+            }
+          }
+        },
+        AttachTagBody: {
+          type: 'object',
+          required: ['tag_id'],
+          properties: {
+            tag_id: { type: 'string', format: 'uuid' }
           }
         },
         Room: {
@@ -161,6 +207,12 @@ export async function GET(request) {
         },
         TaskIdPath: {
           name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' }
+        },
+        TagIdPath: {
+          name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' }
+        },
+        TagIdOnTaskPath: {
+          name: 'tagId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' }
         }
       }
     },
@@ -270,6 +322,142 @@ export async function GET(request) {
               description: 'OK',
               content: { 'application/json': { schema: { type: 'object', properties: { deleted: { type: 'boolean' } } } } }
             },
+            '401': { $ref: '#/components/responses/Unauthorized' },
+            '403': { $ref: '#/components/responses/Forbidden' },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '429': { $ref: '#/components/responses/RateLimited' }
+          }
+        }
+      },
+      '/tasks/{id}/move': {
+        parameters: [{ $ref: '#/components/parameters/TaskIdPath' }],
+        post: {
+          operationId: 'moveTask',
+          summary: 'Перенести задачу в другой квадрат матрицы Эйзенхауэра',
+          description: 'Удобный шорткат вместо PATCH с двумя флагами: принимает один именованный квадрант и сам выставляет important/urgent.',
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/MoveTaskBody' } } }
+          },
+          responses: {
+            '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object', properties: { task: { $ref: '#/components/schemas/Task' } } } } } },
+            '400': { description: 'Invalid request', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { $ref: '#/components/responses/Unauthorized' },
+            '403': { $ref: '#/components/responses/Forbidden' },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '429': { $ref: '#/components/responses/RateLimited' }
+          }
+        }
+      },
+      '/tasks/{id}/tags': {
+        parameters: [{ $ref: '#/components/parameters/TaskIdPath' }],
+        post: {
+          operationId: 'attachTagToTask',
+          summary: 'Прикрепить тег к задаче',
+          description: 'Тег должен принадлежать тому же контексту, что и задача: личный тег — личной задаче, тег комнаты — задаче в той же комнате. Идемпотентно.',
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/AttachTagBody' } } }
+          },
+          responses: {
+            '201': {
+              description: 'Attached',
+              content: { 'application/json': { schema: { type: 'object', properties: { attached: { type: 'boolean' }, tag: { $ref: '#/components/schemas/Tag' } } } } }
+            },
+            '400': { description: 'Invalid request', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { $ref: '#/components/responses/Unauthorized' },
+            '403': { $ref: '#/components/responses/Forbidden' },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '429': { $ref: '#/components/responses/RateLimited' }
+          }
+        }
+      },
+      '/tasks/{id}/tags/{tagId}': {
+        parameters: [
+          { $ref: '#/components/parameters/TaskIdPath' },
+          { $ref: '#/components/parameters/TagIdOnTaskPath' }
+        ],
+        delete: {
+          operationId: 'detachTagFromTask',
+          summary: 'Открепить тег от задачи',
+          responses: {
+            '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object', properties: { detached: { type: 'boolean' } } } } } },
+            '401': { $ref: '#/components/responses/Unauthorized' },
+            '403': { $ref: '#/components/responses/Forbidden' },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '429': { $ref: '#/components/responses/RateLimited' }
+          }
+        }
+      },
+      '/tags': {
+        get: {
+          operationId: 'listTags',
+          summary: 'Список тегов',
+          description: 'Без параметров — личные теги. С room_id — теги указанной комнаты (требуется членство в ней).',
+          parameters: [
+            { name: 'room_id', in: 'query', required: false, schema: { type: 'string', format: 'uuid' } }
+          ],
+          responses: {
+            '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object', properties: { tags: { type: 'array', items: { $ref: '#/components/schemas/Tag' } } } } } } },
+            '401': { $ref: '#/components/responses/Unauthorized' },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '429': { $ref: '#/components/responses/RateLimited' }
+          }
+        },
+        post: {
+          operationId: 'createTag',
+          summary: 'Создать тег',
+          description: 'Личный тег — без room_id. Тег комнаты — с room_id (требуется право manage_tags).',
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/CreateTagBody' } } }
+          },
+          responses: {
+            '201': { description: 'Created', content: { 'application/json': { schema: { type: 'object', properties: { tag: { $ref: '#/components/schemas/Tag' } } } } } },
+            '400': { description: 'Invalid request', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { $ref: '#/components/responses/Unauthorized' },
+            '403': { $ref: '#/components/responses/Forbidden' },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '409': { description: 'Tag with this name already exists in this scope', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '429': { $ref: '#/components/responses/RateLimited' }
+          }
+        }
+      },
+      '/tags/{id}': {
+        parameters: [{ $ref: '#/components/parameters/TagIdPath' }],
+        get: {
+          operationId: 'getTag',
+          summary: 'Получить тег',
+          responses: {
+            '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object', properties: { tag: { $ref: '#/components/schemas/Tag' } } } } } },
+            '401': { $ref: '#/components/responses/Unauthorized' },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '429': { $ref: '#/components/responses/RateLimited' }
+          }
+        },
+        patch: {
+          operationId: 'updateTag',
+          summary: 'Переименовать или перекрасить тег',
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/PatchTagBody' } } }
+          },
+          responses: {
+            '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object', properties: { tag: { $ref: '#/components/schemas/Tag' } } } } } },
+            '400': { description: 'Invalid request', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { $ref: '#/components/responses/Unauthorized' },
+            '403': { $ref: '#/components/responses/Forbidden' },
+            '404': { $ref: '#/components/responses/NotFound' },
+            '409': { description: 'Tag with this name already exists in this scope', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '429': { $ref: '#/components/responses/RateLimited' }
+          }
+        },
+        delete: {
+          operationId: 'deleteTag',
+          summary: 'Удалить тег',
+          description: 'Удаление тега отвяжет его от всех задач, где он был назначен.',
+          responses: {
+            '200': { description: 'OK', content: { 'application/json': { schema: { type: 'object', properties: { deleted: { type: 'boolean' } } } } } },
             '401': { $ref: '#/components/responses/Unauthorized' },
             '403': { $ref: '#/components/responses/Forbidden' },
             '404': { $ref: '#/components/responses/NotFound' },

@@ -1,5 +1,5 @@
 import { authenticateApiRequest, apiError, apiOk } from '@/lib/apiAuth';
-import { getMyRoomRole, getMyRoomMember, canCreateRoomTask, serializeTask } from '@/lib/apiAccess';
+import { getMyRoomRole, getMyRoomMember, canCreateRoomTask, serializeTask, loadTagsForTasks } from '@/lib/apiAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +40,8 @@ export async function GET(request, { params }) {
 
   const { data, error } = await q;
   if (error) return apiError(500, 'db_error', error.message);
-  return apiOk({ tasks: (data || []).map(serializeTask) });
+  const tagMap = await loadTagsForTasks(supabase, (data || []).map((t) => t.id));
+  return apiOk({ tasks: (data || []).map((t) => serializeTask(t, tagMap.get(t.id))) });
 }
 
 export async function POST(request, { params }) {
@@ -85,5 +86,5 @@ export async function POST(request, { params }) {
     .select('id, owner_id, room_id, title, description, important, urgent, done, created_at, due_at, created_by_api_key_id')
     .single();
   if (error) return apiError(500, 'db_error', error.message);
-  return apiOk({ task: serializeTask(data) }, 201);
+  return apiOk({ task: serializeTask(data, []) }, 201);
 }

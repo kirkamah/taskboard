@@ -1,5 +1,5 @@
 import { authenticateApiRequest, apiError, apiOk } from '@/lib/apiAuth';
-import { loadReadableTask, loadReadableTaskForWrite, canEditTask, canDeleteTask, serializeTask } from '@/lib/apiAccess';
+import { loadReadableTask, loadReadableTaskForWrite, canEditTask, canDeleteTask, serializeTask, loadTagsForTasks } from '@/lib/apiAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +10,8 @@ export async function GET(request, { params }) {
 
   const { task } = await loadReadableTask(supabase, params.id, userId);
   if (!task) return apiError(404, 'not_found', 'Task not found');
-  return apiOk({ task: serializeTask(task) });
+  const tagMap = await loadTagsForTasks(supabase, [task.id]);
+  return apiOk({ task: serializeTask(task, tagMap.get(task.id)) });
 }
 
 export async function PATCH(request, { params }) {
@@ -57,7 +58,8 @@ export async function PATCH(request, { params }) {
     .single();
 
   if (error) return apiError(500, 'db_error', error.message);
-  return apiOk({ task: serializeTask(data) });
+  const tagMap = await loadTagsForTasks(supabase, [data.id]);
+  return apiOk({ task: serializeTask(data, tagMap.get(data.id)) });
 }
 
 export async function DELETE(request, { params }) {
