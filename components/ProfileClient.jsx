@@ -10,9 +10,10 @@ import { THEMES, THEME_LABELS, THEME_DESCRIPTIONS, applyTheme } from '@/lib/them
 // Small preview tile shown in the theme picker — a surface swatch with an
 // accent dot so users can see what "cosmic" actually looks like.
 const THEME_PREVIEWS = {
-  light:  { bg: '#f9fafb', surface: '#ffffff', accent: '#111827', border: '#e5e7eb' },
-  dark:   { bg: '#0f172a', surface: '#1e293b', accent: '#6366f1', border: '#334155' },
-  cosmic: { bg: '#0a0724', surface: '#170d3d', accent: '#c026d3', border: '#3b1d7a' },
+  light:     { bg: '#f9fafb', surface: '#ffffff', accent: '#111827', border: '#e5e7eb' },
+  dark:      { bg: '#0f172a', surface: '#1e293b', accent: '#6366f1', border: '#334155' },
+  cosmic:    { bg: '#0a0724', surface: '#170d3d', accent: '#c026d3', border: '#3b1d7a' },
+  parchment: { bg: '#e8d3a0', surface: '#f3e4bd', accent: '#8b2e1a', border: '#b89a5e' },
 };
 
 const EMOJI_OPTIONS = [
@@ -180,10 +181,21 @@ export default function ProfileClient({ userId, initialProfile }) {
           <label className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-3 flex items-center gap-2">
             <Palette size={12} /> Тема оформления
           </label>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {THEMES.map((t) => {
               const preview = THEME_PREVIEWS[t];
               const selected = theme === t;
+              let tileBg = preview.bg;
+              if (t === 'cosmic') {
+                tileBg = `radial-gradient(120% 140% at 10% 0%, rgba(192,38,211,0.55), transparent 55%), radial-gradient(120% 100% at 90% 100%, rgba(79,70,229,0.55), transparent 55%), ${preview.bg}`;
+              } else if (t === 'parchment') {
+                tileBg = `radial-gradient(100% 90% at 15% 10%, rgba(120,78,28,0.18), transparent 60%), radial-gradient(90% 80% at 85% 90%, rgba(90,55,20,0.16), transparent 65%), ${preview.bg}`;
+              }
+              const accentShadow = t === 'cosmic'
+                ? `0 0 10px ${preview.accent}`
+                : t === 'parchment'
+                  ? `0 0 4px rgba(139,46,26,0.5)`
+                  : 'none';
               return (
                 <button
                   key={t}
@@ -194,9 +206,7 @@ export default function ProfileClient({ userId, initialProfile }) {
                   <div
                     className="h-14 rounded-md mb-2 relative overflow-hidden"
                     style={{
-                      background: t === 'cosmic'
-                        ? `radial-gradient(120% 140% at 10% 0%, rgba(192,38,211,0.55), transparent 55%), radial-gradient(120% 100% at 90% 100%, rgba(79,70,229,0.55), transparent 55%), ${preview.bg}`
-                        : preview.bg,
+                      background: tileBg,
                       borderColor: preview.border,
                     }}
                   >
@@ -206,7 +216,7 @@ export default function ProfileClient({ userId, initialProfile }) {
                     />
                     <span
                       className="absolute bottom-3 right-3 w-4 h-4 rounded-full"
-                      style={{ backgroundColor: preview.accent, boxShadow: t === 'cosmic' ? `0 0 10px ${preview.accent}` : 'none' }}
+                      style={{ backgroundColor: preview.accent, boxShadow: accentShadow }}
                     />
                   </div>
                   <div className="flex items-center justify-between">

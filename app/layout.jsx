@@ -13,7 +13,7 @@ export const metadata = {
 const THEME_BOOT_SCRIPT = `
 try {
   var t = window.localStorage.getItem('theme');
-  if (t === 'dark' || t === 'cosmic' || t === 'light') {
+  if (t === 'dark' || t === 'cosmic' || t === 'light' || t === 'parchment') {
     document.documentElement.setAttribute('data-theme', t);
   }
 } catch (e) {}

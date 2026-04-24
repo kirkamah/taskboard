@@ -13,4 +13,4 @@ alter table public.profiles
 
 alter table public.profiles
   add constraint profiles_theme_check
-  check (theme in ('light', 'dark', 'cosmic'));
+  check (theme in ('light', 'dark', 'cosmic', 'parchment'));

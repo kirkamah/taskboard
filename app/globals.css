@@ -87,6 +87,31 @@ html[data-theme="cosmic"] {
   --hover-bg: #241659;
 }
 
+html[data-theme="parchment"] {
+  --bg-app: #e8d3a0;
+  --bg-surface: #f3e4bd;
+  --bg-subtle: #e4cf95;
+  --bg-muted: #d6bb7c;
+  --bg-inset: #c3a462;
+
+  --fg-primary: #3a240e;
+  --fg-secondary: #563818;
+  --fg-tertiary: #7a5528;
+  --fg-quaternary: #9a7a4d;
+  --fg-faint: #b89a70;
+
+  --border-faint: #d8c38c;
+  --border-default: #b89a5e;
+  --border-strong: #8c6e3e;
+
+  --accent: #8b2e1a;
+  --accent-hover: #6b220f;
+  --accent-fg: #f3e4bd;
+  --accent-disabled: #b89a78;
+
+  --hover-bg: #decc8a;
+}
+
 body {
   background: var(--bg-app);
   color: var(--fg-primary);
@@ -105,103 +130,152 @@ html[data-theme="cosmic"] body {
   background-attachment: fixed;
 }
 
+/* Parchment gets a paper-grain wash — a few darker age-spots and a warm
+   vignette so the page looks like a real yellowed journal sheet rather
+   than a flat beige rectangle. Serif family reinforces the vibe. */
+html[data-theme="parchment"] body {
+  background:
+    radial-gradient(600px 420px at 12% 8%, rgba(120, 78, 28, 0.14), transparent 65%),
+    radial-gradient(500px 380px at 92% 18%, rgba(90, 55, 20, 0.12), transparent 65%),
+    radial-gradient(800px 500px at 50% 110%, rgba(120, 78, 28, 0.16), transparent 60%),
+    radial-gradient(200px 160px at 78% 62%, rgba(90, 55, 20, 0.10), transparent 70%),
+    radial-gradient(160px 120px at 22% 78%, rgba(120, 78, 28, 0.10), transparent 70%),
+    var(--bg-app);
+  background-attachment: fixed;
+  font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, 'Hoefler Text', Georgia, serif;
+}
+
 html[data-theme="dark"],
 html[data-theme="cosmic"] {
   color-scheme: dark;
 }
 
 /* === Tailwind utility overrides =========================================
-   Only fire under dark/cosmic. Light theme falls through to stock Tailwind. */
+   Fire under dark/cosmic/parchment — the three themes that remap the core
+   gray palette onto --bg-*/--fg-*/--accent tokens. Light theme falls
+   through to stock Tailwind. Parchment is light-on-cream but still needs
+   these so .bg-white surfaces read as parchment (not stark white) and
+   gray ink becomes sepia. Semantic tints (red/green/blue/amber below)
+   stay stock for parchment since it's a light theme. */
 
 /* --- Backgrounds ---------------------------------------------------------- */
 html[data-theme="dark"] .bg-white,
-html[data-theme="cosmic"] .bg-white { background-color: var(--bg-surface); }
+html[data-theme="cosmic"] .bg-white,
+html[data-theme="parchment"] .bg-white { background-color: var(--bg-surface); }
 
 html[data-theme="dark"] .bg-gray-50,
-html[data-theme="cosmic"] .bg-gray-50 { background-color: var(--bg-subtle); }
+html[data-theme="cosmic"] .bg-gray-50,
+html[data-theme="parchment"] .bg-gray-50 { background-color: var(--bg-subtle); }
 
 html[data-theme="dark"] .bg-gray-100,
-html[data-theme="cosmic"] .bg-gray-100 { background-color: var(--bg-muted); }
+html[data-theme="cosmic"] .bg-gray-100,
+html[data-theme="parchment"] .bg-gray-100 { background-color: var(--bg-muted); }
 
 html[data-theme="dark"] .bg-gray-200,
-html[data-theme="cosmic"] .bg-gray-200 { background-color: var(--bg-inset); }
+html[data-theme="cosmic"] .bg-gray-200,
+html[data-theme="parchment"] .bg-gray-200 { background-color: var(--bg-inset); }
 
 html[data-theme="dark"] .bg-gray-300,
-html[data-theme="cosmic"] .bg-gray-300 { background-color: var(--accent-disabled); }
+html[data-theme="cosmic"] .bg-gray-300,
+html[data-theme="parchment"] .bg-gray-300 { background-color: var(--accent-disabled); }
 
 html[data-theme="dark"] .bg-gray-800,
-html[data-theme="cosmic"] .bg-gray-800 { background-color: var(--accent-hover); }
+html[data-theme="cosmic"] .bg-gray-800,
+html[data-theme="parchment"] .bg-gray-800 { background-color: var(--accent-hover); }
 
 html[data-theme="dark"] .bg-gray-900,
-html[data-theme="cosmic"] .bg-gray-900 { background-color: var(--accent); }
+html[data-theme="cosmic"] .bg-gray-900,
+html[data-theme="parchment"] .bg-gray-900 { background-color: var(--accent); }
 
 html[data-theme="dark"] .disabled\:bg-gray-300:disabled,
-html[data-theme="cosmic"] .disabled\:bg-gray-300:disabled { background-color: var(--accent-disabled); }
+html[data-theme="cosmic"] .disabled\:bg-gray-300:disabled,
+html[data-theme="parchment"] .disabled\:bg-gray-300:disabled { background-color: var(--accent-disabled); }
 
 html[data-theme="dark"] .hover\:bg-white:hover,
-html[data-theme="cosmic"] .hover\:bg-white:hover { background-color: var(--bg-muted); }
+html[data-theme="cosmic"] .hover\:bg-white:hover,
+html[data-theme="parchment"] .hover\:bg-white:hover { background-color: var(--bg-muted); }
 
 html[data-theme="dark"] .hover\:bg-gray-50:hover,
-html[data-theme="cosmic"] .hover\:bg-gray-50:hover { background-color: var(--bg-subtle); }
+html[data-theme="cosmic"] .hover\:bg-gray-50:hover,
+html[data-theme="parchment"] .hover\:bg-gray-50:hover { background-color: var(--bg-subtle); }
 
 html[data-theme="dark"] .hover\:bg-gray-100:hover,
-html[data-theme="cosmic"] .hover\:bg-gray-100:hover { background-color: var(--hover-bg); }
+html[data-theme="cosmic"] .hover\:bg-gray-100:hover,
+html[data-theme="parchment"] .hover\:bg-gray-100:hover { background-color: var(--hover-bg); }
 
 html[data-theme="dark"] .hover\:bg-gray-800:hover,
-html[data-theme="cosmic"] .hover\:bg-gray-800:hover { background-color: var(--accent-hover); }
+html[data-theme="cosmic"] .hover\:bg-gray-800:hover,
+html[data-theme="parchment"] .hover\:bg-gray-800:hover { background-color: var(--accent-hover); }
 
 /* --- Text ---------------------------------------------------------------- */
 html[data-theme="dark"] .text-gray-900,
-html[data-theme="cosmic"] .text-gray-900 { color: var(--fg-primary); }
+html[data-theme="cosmic"] .text-gray-900,
+html[data-theme="parchment"] .text-gray-900 { color: var(--fg-primary); }
 
 html[data-theme="dark"] .text-gray-800,
-html[data-theme="cosmic"] .text-gray-800 { color: var(--fg-primary); }
+html[data-theme="cosmic"] .text-gray-800,
+html[data-theme="parchment"] .text-gray-800 { color: var(--fg-primary); }
 
 html[data-theme="dark"] .text-gray-700,
-html[data-theme="cosmic"] .text-gray-700 { color: var(--fg-secondary); }
+html[data-theme="cosmic"] .text-gray-700,
+html[data-theme="parchment"] .text-gray-700 { color: var(--fg-secondary); }
 
 html[data-theme="dark"] .text-gray-600,
-html[data-theme="cosmic"] .text-gray-600 { color: var(--fg-tertiary); }
+html[data-theme="cosmic"] .text-gray-600,
+html[data-theme="parchment"] .text-gray-600 { color: var(--fg-tertiary); }
 
 html[data-theme="dark"] .text-gray-500,
-html[data-theme="cosmic"] .text-gray-500 { color: var(--fg-quaternary); }
+html[data-theme="cosmic"] .text-gray-500,
+html[data-theme="parchment"] .text-gray-500 { color: var(--fg-quaternary); }
 
 html[data-theme="dark"] .text-gray-400,
-html[data-theme="cosmic"] .text-gray-400 { color: var(--fg-faint); }
+html[data-theme="cosmic"] .text-gray-400,
+html[data-theme="parchment"] .text-gray-400 { color: var(--fg-faint); }
 
 html[data-theme="dark"] .text-gray-300,
-html[data-theme="cosmic"] .text-gray-300 { color: var(--fg-faint); }
+html[data-theme="cosmic"] .text-gray-300,
+html[data-theme="parchment"] .text-gray-300 { color: var(--fg-faint); }
 
 html[data-theme="dark"] .hover\:text-gray-900:hover,
-html[data-theme="cosmic"] .hover\:text-gray-900:hover { color: var(--fg-primary); }
+html[data-theme="cosmic"] .hover\:text-gray-900:hover,
+html[data-theme="parchment"] .hover\:text-gray-900:hover { color: var(--fg-primary); }
 
 html[data-theme="dark"] .hover\:text-gray-700:hover,
-html[data-theme="cosmic"] .hover\:text-gray-700:hover { color: var(--fg-secondary); }
+html[data-theme="cosmic"] .hover\:text-gray-700:hover,
+html[data-theme="parchment"] .hover\:text-gray-700:hover { color: var(--fg-secondary); }
 
 /* --- Borders ------------------------------------------------------------- */
 html[data-theme="dark"] .border-gray-100,
-html[data-theme="cosmic"] .border-gray-100 { border-color: var(--border-faint); }
+html[data-theme="cosmic"] .border-gray-100,
+html[data-theme="parchment"] .border-gray-100 { border-color: var(--border-faint); }
 
 html[data-theme="dark"] .border-gray-200,
-html[data-theme="cosmic"] .border-gray-200 { border-color: var(--border-default); }
+html[data-theme="cosmic"] .border-gray-200,
+html[data-theme="parchment"] .border-gray-200 { border-color: var(--border-default); }
 
 html[data-theme="dark"] .border-gray-300,
-html[data-theme="cosmic"] .border-gray-300 { border-color: var(--border-strong); }
+html[data-theme="cosmic"] .border-gray-300,
+html[data-theme="parchment"] .border-gray-300 { border-color: var(--border-strong); }
 
 html[data-theme="dark"] .border-gray-400,
-html[data-theme="cosmic"] .border-gray-400 { border-color: var(--border-strong); }
+html[data-theme="cosmic"] .border-gray-400,
+html[data-theme="parchment"] .border-gray-400 { border-color: var(--border-strong); }
 
 html[data-theme="dark"] .border-gray-900,
-html[data-theme="cosmic"] .border-gray-900 { border-color: var(--accent); }
+html[data-theme="cosmic"] .border-gray-900,
+html[data-theme="parchment"] .border-gray-900 { border-color: var(--accent); }
 
 html[data-theme="dark"] .hover\:border-gray-900:hover,
-html[data-theme="cosmic"] .hover\:border-gray-900:hover { border-color: var(--accent); }
+html[data-theme="cosmic"] .hover\:border-gray-900:hover,
+html[data-theme="parchment"] .hover\:border-gray-900:hover { border-color: var(--accent); }
 
 html[data-theme="dark"] .hover\:border-gray-400:hover,
-html[data-theme="cosmic"] .hover\:border-gray-400:hover { border-color: var(--border-strong); }
+html[data-theme="cosmic"] .hover\:border-gray-400:hover,
+html[data-theme="parchment"] .hover\:border-gray-400:hover { border-color: var(--border-strong); }
 
 html[data-theme="dark"] .focus\:border-gray-900:focus,
-html[data-theme="cosmic"] .focus\:border-gray-900:focus { border-color: var(--accent); }
+html[data-theme="cosmic"] .focus\:border-gray-900:focus,
+html[data-theme="parchment"] .focus\:border-gray-900:focus { border-color: var(--accent); }
 
 html[data-theme="dark"] .focus\:border-red-500:focus,
 html[data-theme="cosmic"] .focus\:border-red-500:focus { border-color: #fca5a5; }
@@ -209,28 +283,35 @@ html[data-theme="cosmic"] .focus\:border-red-500:focus { border-color: #fca5a5; 
 /* --- Form controls ------------------------------------------------------- */
 html[data-theme="dark"] input:not([type=checkbox]):not([type=radio]):not([type=range]),
 html[data-theme="cosmic"] input:not([type=checkbox]):not([type=radio]):not([type=range]),
+html[data-theme="parchment"] input:not([type=checkbox]):not([type=radio]):not([type=range]),
 html[data-theme="dark"] textarea,
 html[data-theme="cosmic"] textarea,
+html[data-theme="parchment"] textarea,
 html[data-theme="dark"] select,
-html[data-theme="cosmic"] select {
+html[data-theme="cosmic"] select,
+html[data-theme="parchment"] select {
   background-color: var(--bg-subtle);
   color: var(--fg-primary);
 }
 
 html[data-theme="dark"] input[readonly],
-html[data-theme="cosmic"] input[readonly] {
+html[data-theme="cosmic"] input[readonly],
+html[data-theme="parchment"] input[readonly] {
   background-color: var(--bg-muted);
 }
 
 html[data-theme="dark"] input::placeholder,
 html[data-theme="cosmic"] input::placeholder,
+html[data-theme="parchment"] input::placeholder,
 html[data-theme="dark"] textarea::placeholder,
-html[data-theme="cosmic"] textarea::placeholder {
+html[data-theme="cosmic"] textarea::placeholder,
+html[data-theme="parchment"] textarea::placeholder {
   color: var(--fg-faint);
 }
 
 html[data-theme="dark"] .accent-gray-900,
-html[data-theme="cosmic"] .accent-gray-900 { accent-color: var(--accent); }
+html[data-theme="cosmic"] .accent-gray-900,
+html[data-theme="parchment"] .accent-gray-900 { accent-color: var(--accent); }
 
 /* --- Semantic tint backgrounds ------------------------------------------- */
 html[data-theme="dark"] .bg-red-50,
@@ -362,9 +443,32 @@ html[data-theme="cosmic"] .tb-tag[data-color="purple"] { background: rgba(168, 8
 html[data-theme="dark"]   .tb-tag[data-color="pink"],
 html[data-theme="cosmic"] .tb-tag[data-color="pink"]   { background: rgba(236, 72, 153, 0.25); color: #fbcfe8; border-color: rgba(236, 72, 153, 0.70); }
 
+/* Parchment tags — warm washes tinted toward ink-on-paper rather than
+   pastel Tailwind chips. Backgrounds lean amber/ochre so they sit on
+   the yellowed page; text uses deep, readable ink shades. */
+html[data-theme="parchment"] .tb-tag[data-color="gray"]   { background: #dcc791; color: #3a2b14; border-color: #9a7a4d; }
+html[data-theme="parchment"] .tb-tag[data-color="red"]    { background: #e8c8b0; color: #6b1f12; border-color: #a8452e; }
+html[data-theme="parchment"] .tb-tag[data-color="orange"] { background: #ecd1a0; color: #6e3714; border-color: #b06a2c; }
+html[data-theme="parchment"] .tb-tag[data-color="amber"]  { background: #ecd995; color: #5a3a0a; border-color: #b08934; }
+html[data-theme="parchment"] .tb-tag[data-color="green"]  { background: #ccd3a0; color: #33421a; border-color: #6e7a38; }
+html[data-theme="parchment"] .tb-tag[data-color="teal"]   { background: #b9cdb2; color: #2a3f2c; border-color: #547a5e; }
+html[data-theme="parchment"] .tb-tag[data-color="blue"]   { background: #c2c8bb; color: #24354a; border-color: #5a6e82; }
+html[data-theme="parchment"] .tb-tag[data-color="indigo"] { background: #c6c2ba; color: #2e2a52; border-color: #5a527a; }
+html[data-theme="parchment"] .tb-tag[data-color="purple"] { background: #d4c2b4; color: #4a2a42; border-color: #7a507a; }
+html[data-theme="parchment"] .tb-tag[data-color="pink"]   { background: #e6c8b8; color: #5a1f3a; border-color: #a0527a; }
+
 /* Cosmic: glow on primary interactive elements */
 html[data-theme="cosmic"] .bg-gray-900:not(:disabled):not([disabled]):hover {
   box-shadow: 0 0 14px rgba(192, 38, 211, 0.45);
 }
 html[data-theme="cosmic"] .ring-gray-900 { --tw-ring-color: var(--accent); }
 html[data-theme="dark"] .ring-gray-900 { --tw-ring-color: var(--accent); }
+
+/* Parchment: a warm wax-seal shadow on primary buttons, plus matching ring */
+html[data-theme="parchment"] .bg-gray-900:not(:disabled):not([disabled]) {
+  box-shadow: 0 1px 2px rgba(58, 36, 14, 0.35);
+}
+html[data-theme="parchment"] .bg-gray-900:not(:disabled):not([disabled]):hover {
+  box-shadow: 0 0 10px rgba(139, 46, 26, 0.45), 0 1px 2px rgba(58, 36, 14, 0.35);
+}
+html[data-theme="parchment"] .ring-gray-900 { --tw-ring-color: var(--accent); }
