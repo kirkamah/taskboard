@@ -43,10 +43,6 @@ export default function BoardBody({
   const [showCompleted, setShowCompleted] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [draggingTaskId, setDraggingTaskId] = useState(null);
-  // For within-quadrant reorder: which card is hovered, and whether the drop
-  // would land above (true) or below (false) it. Cleared on drop / dragEnd.
-  const [dragOverTaskId, setDragOverTaskId] = useState(null);
-  const [dragOverAbove, setDragOverAbove] = useState(true);
 
   // Load persisted per-user filters for this board. Scope id = roomId for
   // rooms, userId for the personal board — keeps keys disjoint.
@@ -365,41 +361,6 @@ export default function BoardBody({
     }
   };
 
-  // Drop the source card directly above/below a target card. Computes a
-  // fractional position so neighbours don't need to be rewritten.
-  const reorderTaskRelativeTo = async (sourceId, targetId, dropAbove) => {
-    if (sourceId === targetId) return;
-    const target = tasks.find(t => t.id === targetId);
-    const source = tasks.find(t => t.id === sourceId);
-    if (!target || !source) return;
-    // Sort same-quadrant tasks by current position (descending = top to bottom).
-    const sameQuadSorted = tasks
-      .filter(t => t.important === target.important && t.urgent === target.urgent && t.id !== sourceId)
-      .sort((a, b) => (Number(b.position) || 0) - (Number(a.position) || 0));
-    const targetIdx = sameQuadSorted.findIndex(t => t.id === targetId);
-    if (targetIdx === -1) return;
-    const targetPos = Number(target.position) || 0;
-    let newPos;
-    if (dropAbove) {
-      const above = sameQuadSorted[targetIdx - 1];
-      newPos = above ? (targetPos + (Number(above.position) || 0)) / 2 : targetPos + 1;
-    } else {
-      const below = sameQuadSorted[targetIdx + 1];
-      newPos = below ? (targetPos + (Number(below.position) || 0)) / 2 : targetPos - 1;
-    }
-    setTasks((prev) => prev.map(t => t.id === sourceId
-      ? { ...t, important: target.important, urgent: target.urgent, position: newPos }
-      : t
-    ));
-    const { error } = await supabase
-      .from('tasks')
-      .update({ important: target.important, urgent: target.urgent, position: newPos })
-      .eq('id', sourceId);
-    if (error) {
-      await loadTasks();
-    }
-  };
-
   const del = async (id) => {
     await supabase.from('tasks').delete().eq('id', id);
     setTasks((prev) => prev.filter(t => t.id !== id));
@@ -608,7 +569,6 @@ export default function BoardBody({
                   const dueClasses = getDueClasses(task.due_at, task.done);
                   const isDragging = draggingTaskId === task.id;
                   const isOverdue = !!task.due_at && !task.done && new Date(task.due_at).getTime() < Date.now();
-                  const isInsertTarget = dragOverTaskId === task.id && draggingTaskId && draggingTaskId !== task.id;
                   return (
                     <div
                       key={task.id}
@@ -619,46 +579,10 @@ export default function BoardBody({
                         e.dataTransfer.effectAllowed = 'move';
                         try { e.dataTransfer.setData('text/plain', task.id); } catch {}
                       }}
-                      onDragEnd={() => { setDraggingTaskId(null); setDragOverQuadrant(null); setDragOverTaskId(null); }}
-                      onDragOver={(e) => {
-                        if (!canEditTask || !draggingTaskId || draggingTaskId === task.id) return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.dataTransfer.dropEffect = 'move';
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const above = e.clientY < rect.top + rect.height / 2;
-                        if (dragOverTaskId !== task.id || dragOverAbove !== above) {
-                          setDragOverTaskId(task.id);
-                          setDragOverAbove(above);
-                        }
-                      }}
-                      onDragLeave={(e) => {
-                        if (e.currentTarget.contains(e.relatedTarget)) return;
-                        setDragOverTaskId((cur) => cur === task.id ? null : cur);
-                      }}
-                      onDrop={(e) => {
-                        if (!canEditTask || !draggingTaskId || draggingTaskId === task.id) return;
-                        e.preventDefault();
-                        e.stopPropagation();
-                        // Recompute above/below from the cursor at drop time —
-                        // dragOverAbove state may not have committed yet if
-                        // the user drops immediately after crossing midline.
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const aboveAtDrop = e.clientY < rect.top + rect.height / 2;
-                        reorderTaskRelativeTo(draggingTaskId, task.id, aboveAtDrop);
-                        setDraggingTaskId(null);
-                        setDragOverTaskId(null);
-                        setDragOverQuadrant(null);
-                      }}
+                      onDragEnd={() => { setDraggingTaskId(null); setDragOverQuadrant(null); }}
                       onClick={() => { if (!draggingTaskId) setSelectedTask(task); }}
-                      className={`group relative border border-gray-200 rounded-md p-3 hover:border-gray-400 hover:shadow-sm bg-white transition-all ${canEditTask ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${isDragging ? 'opacity-40' : ''} ${isOverdue ? 'border-l-4 border-l-red-500' : ''}`}
+                      className={`group border border-gray-200 rounded-md p-3 hover:border-gray-400 hover:shadow-sm bg-white transition-all ${canEditTask ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${isDragging ? 'opacity-40' : ''} ${isOverdue ? 'border-l-4 border-l-red-500' : ''}`}
                     >
-                      {isInsertTarget && dragOverAbove && (
-                        <div className="absolute top-0 left-0 right-0 h-1 rounded-t-md bg-gray-900 pointer-events-none z-10" />
-                      )}
-                      {isInsertTarget && !dragOverAbove && (
-                        <div className="absolute bottom-0 left-0 right-0 h-1 rounded-b-md bg-gray-900 pointer-events-none z-10" />
-                      )}
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="text-sm font-medium text-gray-900 line-clamp-2 flex-1">{task.title}</h3>
                         <div className="flex items-center gap-1 flex-shrink-0">
