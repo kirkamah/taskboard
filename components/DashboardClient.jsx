@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { LayoutGrid, Plus, Users, LogIn, X, Copy, Lock, Calendar, BarChart3 } from 'lucide-react';
+import { LayoutGrid, Plus, Users, LogIn, X, Copy, Lock, Calendar } from 'lucide-react';
 import { Modal } from '@/components/UI';
 import { translate } from '@/lib/i18n';
 
@@ -131,11 +131,6 @@ export default function DashboardClient({ userName, locale = 'ru' }) {
           <p className="text-sm text-gray-500 mt-1">{t('dashboard.tile.calendarHint')}</p>
         </Link>
 
-        <Link href="/stats" className="bg-white border border-gray-200 rounded-lg p-6 text-left hover:border-gray-900 hover:shadow-sm transition-all">
-          <BarChart3 size={24} className="text-gray-700 mb-3" />
-          <h2 className="font-semibold text-gray-900">{t('dashboard.tile.stats')}</h2>
-          <p className="text-sm text-gray-500 mt-1">{t('dashboard.tile.statsHint')}</p>
-        </Link>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6">
