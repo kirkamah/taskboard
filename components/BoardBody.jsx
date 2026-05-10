@@ -41,7 +41,10 @@ export default function BoardBody({
   const [selectedTask, setSelectedTask] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showCompleted, setShowCompleted] = useState(false);
+  // Bottom panel below the quadrants: 'hidden' (default), 'completed' (done
+  // but not archived), 'archive' (archived). Archive is opt-in cleanup for
+  // long-completed tasks.
+  const [bottomView, setBottomView] = useState('hidden');
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [draggingTaskId, setDraggingTaskId] = useState(null);
 
@@ -223,8 +226,9 @@ export default function BoardBody({
   const filtersActive = hasActiveFilters(filters);
   const hiddenCount = tasks.length - visibleTasks.length;
 
-  const getTasksFor = (imp, urg) => visibleTasks.filter(t => t.important === imp && t.urgent === urg && !t.done);
-  const completedTasks = visibleTasks.filter(t => t.done);
+  const getTasksFor = (imp, urg) => visibleTasks.filter(t => t.important === imp && t.urgent === urg && !t.done && !t.archived_at);
+  const completedTasks = visibleTasks.filter(t => t.done && !t.archived_at);
+  const archivedTasks = visibleTasks.filter(t => !!t.archived_at);
 
   const openAdd = () => {
     setFormData({ title: '', description: '', important: true, urgent: true, due_at: '', assignees: [], tags: [], checklist: [] });
@@ -374,6 +378,19 @@ export default function BoardBody({
     setSelectedTask(null);
   };
 
+  const archiveTask = async (id) => {
+    const archived_at = new Date().toISOString();
+    setTasks((prev) => prev.map(t => t.id === id ? { ...t, archived_at } : t));
+    const { error } = await supabase.from('tasks').update({ archived_at }).eq('id', id);
+    if (error) await loadTasks();
+  };
+
+  const restoreFromArchive = async (id) => {
+    setTasks((prev) => prev.map(t => t.id === id ? { ...t, archived_at: null } : t));
+    const { error } = await supabase.from('tasks').update({ archived_at: null }).eq('id', id);
+    if (error) await loadTasks();
+  };
+
   // Помощник/владелец завершает задачу с опциональным текстом.
   // В комнате вызывает RPC → триггер создаёт уведомление владельцу с note.
   // В личной доске просто помечает done.
@@ -520,19 +537,27 @@ export default function BoardBody({
       />
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="text-sm text-gray-500">
-          {visibleTasks.filter(t => !t.done).length} активных · {completedTasks.length} выполнено
+          {visibleTasks.filter(t => !t.done && !t.archived_at).length} активных · {completedTasks.length} выполнено · {archivedTasks.length} в архиве
           {filtersActive && hiddenCount > 0 && (
             <span className="ml-2 text-gray-400">· фильтры скрывают {hiddenCount}</span>
           )}
           {!canEdit && <span className="ml-2 text-yellow-700">· Только просмотр — у вашей роли нет прав на изменение</span>}
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => setShowCompleted(!showCompleted)}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-100"
-          >
-            {showCompleted ? 'Скрыть выполненные' : 'Показать выполненные'}
-          </button>
+          <div className="inline-flex border border-gray-300 rounded-lg overflow-hidden text-sm">
+            <button
+              onClick={() => setBottomView(bottomView === 'completed' ? 'hidden' : 'completed')}
+              className={`px-3 py-1.5 ${bottomView === 'completed' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}
+            >
+              Выполненные
+            </button>
+            <button
+              onClick={() => setBottomView(bottomView === 'archive' ? 'hidden' : 'archive')}
+              className={`px-3 py-1.5 border-l border-gray-300 ${bottomView === 'archive' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}
+            >
+              Архив
+            </button>
+          </div>
           {canCreateTask && (
             <button onClick={openAdd} className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 flex items-center gap-2">
               <Plus size={16} /> Добавить задачу
@@ -648,26 +673,60 @@ export default function BoardBody({
         })}
       </div>
 
-      {showCompleted && completedTasks.length > 0 && (
+      {bottomView === 'completed' && (
         <div className="mt-6 bg-white border border-gray-200 rounded-lg p-4">
           <h2 className="font-semibold text-gray-900 mb-3">Выполненные</h2>
-          <div className="space-y-2">
-            {completedTasks.map(task => (
-              <div key={task.id} className="flex items-center justify-between border border-gray-200 rounded-md p-3">
-                <span className="text-sm text-gray-500 line-through">{task.title}</span>
-                {(canEditTask || canDeleteTask) && (
-                  <div className="flex gap-2">
-                    {canEditTask && (
-                      <button onClick={() => toggleDone(task)} className="text-xs text-gray-600 hover:text-gray-900">Вернуть</button>
-                    )}
-                    {canDeleteTask && (
-                      <button onClick={() => del(task.id)} className="text-xs text-red-600 hover:text-red-800">Удалить</button>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          {completedTasks.length === 0 ? (
+            <p className="text-xs text-gray-400">Пока ничего не выполнено.</p>
+          ) : (
+            <div className="space-y-2">
+              {completedTasks.map(task => (
+                <div key={task.id} className="flex items-center justify-between border border-gray-200 rounded-md p-3">
+                  <span className="text-sm text-gray-500 line-through">{task.title}</span>
+                  {(canEditTask || canDeleteTask) && (
+                    <div className="flex gap-2">
+                      {canEditTask && (
+                        <button onClick={() => toggleDone(task)} className="text-xs text-gray-600 hover:text-gray-900">Вернуть</button>
+                      )}
+                      {canEditTask && (
+                        <button onClick={() => archiveTask(task.id)} className="text-xs text-gray-600 hover:text-gray-900">В архив</button>
+                      )}
+                      {canDeleteTask && (
+                        <button onClick={() => del(task.id)} className="text-xs text-red-600 hover:text-red-800">Удалить</button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {bottomView === 'archive' && (
+        <div className="mt-6 bg-white border border-gray-200 rounded-lg p-4">
+          <h2 className="font-semibold text-gray-900 mb-3">Архив</h2>
+          {archivedTasks.length === 0 ? (
+            <p className="text-xs text-gray-400">Архив пуст.</p>
+          ) : (
+            <div className="space-y-2">
+              {archivedTasks.map(task => (
+                <div key={task.id} className="flex items-center justify-between border border-gray-200 rounded-md p-3">
+                  <span className={`text-sm text-gray-500 ${task.done ? 'line-through' : ''}`}>{task.title}</span>
+                  {(canEditTask || canDeleteTask) && (
+                    <div className="flex gap-2">
+                      {canEditTask && (
+                        <button onClick={() => restoreFromArchive(task.id)} className="text-xs text-gray-600 hover:text-gray-900">Восстановить</button>
+                      )}
+                      {canDeleteTask && (
+                        <button onClick={() => del(task.id)} className="text-xs text-red-600 hover:text-red-800">Удалить</button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
