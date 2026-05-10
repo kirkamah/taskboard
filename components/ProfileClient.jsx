@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, Check, Smile, Type, Palette } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Avatar, { AVATAR_COLORS, avatarBgClass } from '@/components/Avatar';
+import PushToggle from '@/components/PushToggle';
 import { THEMES, THEME_LABELS, THEME_DESCRIPTIONS, applyTheme } from '@/lib/theme';
 
 // Small preview tile shown in the theme picker — a surface swatch with an
@@ -233,6 +234,11 @@ export default function ProfileClient({ userId, initialProfile }) {
           <p className="text-xs text-gray-500 mt-2">
             Применяется сразу и сохраняется в аккаунте — увидите её на любом устройстве.
           </p>
+        </div>
+
+        <div className="pt-6 border-t border-gray-100">
+          <h2 className="text-sm font-medium text-gray-700 uppercase tracking-wide mb-3">Уведомления</h2>
+          <PushToggle userId={userId} />
         </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
