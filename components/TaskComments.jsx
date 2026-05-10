@@ -5,11 +5,13 @@ import { Send, MessageSquare, Edit2, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Avatar from './Avatar';
 import Markdown from './Markdown';
+import MentionInput from './MentionInput';
+import { extractMentions } from '@/lib/mentions';
 
 // Discussion thread for a single task. Mounted inside the task detail modal.
 // Permissions: any reader of the parent task can post; users edit/delete only
 // their own comments; canModerate (room owner) can also delete others'.
-export default function TaskComments({ taskId, userId, profiles = {}, canModerate = false }) {
+export default function TaskComments({ taskId, taskTitle = '', userId, profiles = {}, canModerate = false, members = [], roomId = null }) {
   const supabase = createClient();
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -50,11 +52,28 @@ export default function TaskComments({ taskId, userId, profiles = {}, canModerat
     const body = draft.trim();
     if (!body || submitting) return;
     setSubmitting(true);
-    const { error } = await supabase
+    const { data: inserted, error } = await supabase
       .from('task_comments')
-      .insert({ task_id: taskId, author_id: userId, body });
+      .insert({ task_id: taskId, author_id: userId, body })
+      .select('id')
+      .single();
     setSubmitting(false);
     if (!error) {
+      // Notify mentioned room members (skip self).
+      const mentionedIds = extractMentions(body).filter((id) => id !== userId);
+      const memberIds = new Set(members.map((m) => m.user_id));
+      const recipients = mentionedIds.filter((id) => memberIds.has(id));
+      if (recipients.length > 0) {
+        const snippet = body.length > 200 ? body.slice(0, 200) + '…' : body;
+        await supabase.from('notifications').insert(recipients.map((rid) => ({
+          recipient_id: rid,
+          type: 'mention',
+          room_id: roomId,
+          task_id: taskId,
+          actor_id: userId,
+          payload: { task_title: taskTitle, snippet, comment_id: inserted?.id },
+        })));
+      }
       setDraft('');
       await load();
     }
@@ -165,17 +184,21 @@ export default function TaskComments({ taskId, userId, profiles = {}, canModerat
         </div>
       )}
       <div className="flex gap-2 items-end">
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
-          }}
-          rows={2}
-          maxLength={4000}
-          placeholder="Написать комментарий…"
-          className="flex-1 text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-gray-400 resize-y"
-        />
+        <div className="flex-1">
+          <MentionInput
+            value={draft}
+            onChange={setDraft}
+            members={members}
+            profiles={profiles}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
+            }}
+            rows={2}
+            maxLength={4000}
+            placeholder="Написать комментарий… (@ — упомянуть)"
+            className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-gray-400 resize-y"
+          />
+        </div>
         <button
           onClick={submit}
           disabled={!draft.trim() || submitting}

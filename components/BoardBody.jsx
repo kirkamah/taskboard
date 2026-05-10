@@ -13,6 +13,8 @@ import TaskFilters from './TaskFilters';
 import TaskComments from './TaskComments';
 import TaskHistory from './TaskHistory';
 import TaskAttachments from './TaskAttachments';
+import MentionInput from './MentionInput';
+import { extractMentions, newMentions } from '@/lib/mentions';
 import { DEFAULT_FILTERS, loadFilters, saveFilters, applyFilters, hasActiveFilters } from '@/lib/taskFilters';
 
 /**
@@ -302,6 +304,24 @@ export default function BoardBody({
     await supabase.from('task_checklist_items').update({ done: nextDone }).eq('id', itemId);
   };
 
+  // Send a 'mention' notification per mentioned room member (skip self),
+  // but only for IDs that exist in the current member list (extracted IDs
+  // come from text — we don't trust them blindly).
+  const notifyMentions = async (taskId, taskTitle, mentionedIds, snippet) => {
+    if (!isRoom || mentionedIds.length === 0) return;
+    const memberIds = new Set(members.map((m) => m.user_id));
+    const recipients = mentionedIds.filter((id) => id !== userId && memberIds.has(id));
+    if (recipients.length === 0) return;
+    await supabase.from('notifications').insert(recipients.map((rid) => ({
+      recipient_id: rid,
+      type: 'mention',
+      room_id: roomId,
+      task_id: taskId,
+      actor_id: userId,
+      payload: { task_title: taskTitle, snippet: (snippet || '').slice(0, 200) },
+    })));
+  };
+
   const save = async () => {
     if (!formData.title.trim()) return;
     const dueIso = localInputToIso(formData.due_at);
@@ -323,6 +343,9 @@ export default function BoardBody({
         if (canAssign) await syncAssignees(data.id, formData.assignees);
         if (canEditTask) await syncTags(data.id, formData.tags);
         if (canEditChecklist) await syncChecklist(data.id, formData.checklist);
+        // Notify only newly added mentions on update.
+        const fresh = newMentions(editingTask.description || '', formData.description || '');
+        await notifyMentions(data.id, formData.title, fresh, formData.description);
         await loadTasks();
       }
     } else {
@@ -340,6 +363,8 @@ export default function BoardBody({
         if (canAssign) await syncAssignees(data.id, formData.assignees);
         if (canCreateTask) await syncTags(data.id, formData.tags);
         if (canCreateTask) await syncChecklist(data.id, formData.checklist);
+        const all = extractMentions(formData.description || '');
+        await notifyMentions(data.id, formData.title, all, formData.description);
         await loadTasks();
       }
     }
@@ -906,9 +931,12 @@ export default function BoardBody({
             />
             <TaskComments
               taskId={selectedTask.id}
+              taskTitle={selectedTask.title}
               userId={userId}
               profiles={profiles}
               canModerate={isRoomOwner}
+              members={isRoom ? members : []}
+              roomId={isRoom ? roomId : null}
             />
             <TaskHistory
               taskId={selectedTask.id}
@@ -1044,10 +1072,12 @@ export default function BoardBody({
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Описание</label>
-              <textarea
+              <MentionInput
                 value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Подробности, контекст, ссылки..."
+                onChange={(v) => setFormData({ ...formData, description: v })}
+                members={isRoom ? members : []}
+                profiles={profiles}
+                placeholder={isRoom ? 'Подробности, контекст, ссылки… (@ — упомянуть)' : 'Подробности, контекст, ссылки…'}
                 rows={4}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 resize-none"
               />

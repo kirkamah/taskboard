@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
   LogOut, User, ChevronDown, ChevronUp, Bell, MessageSquare, Check, X, Crown, ArrowLeft, KeyRound,
-  UserPlus, UserCheck, UserX,
+  UserPlus, UserCheck, UserX, AtSign,
 } from 'lucide-react';
 import LinkifiedText from './LinkifiedText';
 import Avatar from './Avatar';
@@ -122,6 +122,7 @@ export default function Navbar({ userName, userId, userProfile }) {
       case 'join_request_created': return { label: 'Заявка на вступление', Icon: UserPlus, color: 'text-blue-600' };
       case 'join_request_approved': return { label: 'Заявка одобрена', Icon: UserCheck, color: 'text-green-600' };
       case 'join_request_rejected': return { label: 'Заявка отклонена', Icon: UserX, color: 'text-red-600' };
+      case 'mention': return { label: 'Вас упомянули', Icon: AtSign, color: 'text-blue-600' };
       default: return { label: 'Уведомление', Icon: MessageSquare, color: 'text-gray-600' };
     }
   };
@@ -236,6 +237,7 @@ export default function Navbar({ userName, userId, userProfile }) {
                     const requestNote = n.payload?.request_note;
                     const responseNote = n.payload?.response_note;
                     const completionNote = n.payload?.completion_note;
+                    const mentionSnippet = n.type === 'mention' ? n.payload?.snippet : null;
                     const goLabel = isOwnership || isJoinRequest ? 'Перейти к комнате' : 'Перейти к задаче';
                     const { Icon } = meta;
 
@@ -285,6 +287,12 @@ export default function Navbar({ userName, userId, userProfile }) {
                               <div className="bg-gray-50 border border-gray-200 rounded-md p-2 text-sm text-gray-700">
                                 <p className="text-[10px] font-medium text-gray-500 uppercase mb-1">Комментарий</p>
                                 <LinkifiedText text={completionNote} />
+                              </div>
+                            )}
+                            {mentionSnippet && (
+                              <div className="bg-gray-50 border border-gray-200 rounded-md p-2 text-sm text-gray-700">
+                                <p className="text-[10px] font-medium text-gray-500 uppercase mb-1">Фрагмент</p>
+                                <LinkifiedText text={mentionSnippet} />
                               </div>
                             )}
                             <button

@@ -2,6 +2,7 @@
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { UUID_RE } from '@/lib/mentions';
 
 // Renders user-supplied markdown for task descriptions and comments.
 // react-markdown does NOT execute raw HTML by default, so XSS surface is
@@ -17,6 +18,15 @@ const SAFE_PROTOCOL = /^(https?:|mailto:|tel:)/i;
 
 const components = {
   a: ({ href, children, ...props }) => {
+    // [@Name](uuid) — render as a styled mention chip. UUID-only href is
+    // never a real link target, so this is unambiguous.
+    if (typeof href === 'string' && UUID_RE.test(href)) {
+      return (
+        <span className="inline-block px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-xs font-medium">
+          {children}
+        </span>
+      );
+    }
     const safe = typeof href === 'string' && SAFE_PROTOCOL.test(href) ? href : undefined;
     return (
       <a
