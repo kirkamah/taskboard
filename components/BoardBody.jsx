@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/client';
 import { hasPermission } from '@/lib/permissions';
 import TaskFilters from './TaskFilters';
 import TaskComments from './TaskComments';
+import TaskHistory from './TaskHistory';
 import { DEFAULT_FILTERS, loadFilters, saveFilters, applyFilters, hasActiveFilters } from '@/lib/taskFilters';
 
 /**
@@ -901,6 +902,11 @@ export default function BoardBody({
               userId={userId}
               profiles={profiles}
               canModerate={isRoomOwner}
+            />
+            <TaskHistory
+              taskId={selectedTask.id}
+              profiles={profiles}
+              tagsById={tagsById}
             />
             {/* Для участников с approve_completion_requests: список активных запросов */}
             {isRoom && canApproveRequests && (selectedTask.pendingRequests || []).length > 0 && (
