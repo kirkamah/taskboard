@@ -610,8 +610,14 @@ export default function BoardBody({
                   const isOverdue = !!task.due_at && !task.done && new Date(task.due_at).getTime() < Date.now();
                   const isInsertTarget = dragOverTaskId === task.id && draggingTaskId && draggingTaskId !== task.id;
                   return (
+                    <div key={task.id} className="relative">
+                      {isInsertTarget && dragOverAbove && (
+                        <div className="absolute -top-1 left-0 right-0 h-1 rounded-full bg-gray-900 pointer-events-none z-10" />
+                      )}
+                      {isInsertTarget && !dragOverAbove && (
+                        <div className="absolute -bottom-1 left-0 right-0 h-1 rounded-full bg-gray-900 pointer-events-none z-10" />
+                      )}
                     <div
-                      key={task.id}
                       draggable={canEditTask}
                       onDragStart={(e) => {
                         if (!canEditTask) return;
@@ -640,13 +646,19 @@ export default function BoardBody({
                         if (!canEditTask || !draggingTaskId || draggingTaskId === task.id) return;
                         e.preventDefault();
                         e.stopPropagation();
-                        reorderTaskRelativeTo(draggingTaskId, task.id, dragOverAbove);
+                        // Recompute above/below from the cursor at drop time —
+                        // the dragOverAbove state may not have committed yet
+                        // if the user drops immediately after crossing the
+                        // midline.
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const aboveAtDrop = e.clientY < rect.top + rect.height / 2;
+                        reorderTaskRelativeTo(draggingTaskId, task.id, aboveAtDrop);
                         setDraggingTaskId(null);
                         setDragOverTaskId(null);
                         setDragOverQuadrant(null);
                       }}
                       onClick={() => { if (!draggingTaskId) setSelectedTask(task); }}
-                      className={`group border border-gray-200 rounded-md p-3 hover:border-gray-400 hover:shadow-sm bg-white transition-all ${canEditTask ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${isDragging ? 'opacity-40' : ''} ${isOverdue ? 'border-l-4 border-l-red-500' : ''} ${isInsertTarget && dragOverAbove ? 'shadow-[0_-2px_0_0_rgb(17,24,39)]' : ''} ${isInsertTarget && !dragOverAbove ? 'shadow-[0_2px_0_0_rgb(17,24,39)]' : ''}`}
+                      className={`group border border-gray-200 rounded-md p-3 hover:border-gray-400 hover:shadow-sm bg-white transition-all ${canEditTask ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${isDragging ? 'opacity-40' : ''} ${isOverdue ? 'border-l-4 border-l-red-500' : ''}`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="text-sm font-medium text-gray-900 line-clamp-2 flex-1">{task.title}</h3>
@@ -703,6 +715,7 @@ export default function BoardBody({
                           </div>
                         )}
                       </div>
+                    </div>
                     </div>
                   );
                 })}
