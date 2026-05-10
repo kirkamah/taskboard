@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Filter, X, Check } from 'lucide-react';
+import { Filter, X, Check, Search } from 'lucide-react';
 import Tag from './Tag';
 import Avatar from './Avatar';
 import { DEFAULT_FILTERS, countActiveFilters } from '@/lib/taskFilters';
@@ -72,9 +72,33 @@ export default function TaskFilters({ scope, filters, onChange, members = [], pr
     chips.push({ key: 'quad', label: QUAD_LABELS[filters.quadrant] || filters.quadrant, clear: () => set({ quadrant: null }) });
   }
 
+  const query = filters.query || '';
+  const hasQuery = query.trim().length > 0;
+
   return (
     <div className="mb-3">
       <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => set({ query: e.target.value })}
+            placeholder="Поиск по задачам"
+            className={`pl-8 pr-7 py-1.5 text-sm border rounded-lg w-56 focus:outline-none focus:ring-1 ${hasQuery ? 'border-gray-900 ring-gray-900' : 'border-gray-300 focus:ring-gray-400'}`}
+          />
+          {hasQuery && (
+            <button
+              type="button"
+              onClick={() => set({ query: '' })}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 p-0.5"
+              title="Очистить поиск"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
         <div className="relative">
           <button
             ref={buttonRef}

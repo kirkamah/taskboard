@@ -215,7 +215,8 @@ export default function BoardBody({
 
   // Per-user view filters: apply before quadrant split, so counts and empty
   // states reflect what the current user has chosen to see.
-  const visibleTasks = applyFilters(tasks, filters, userId);
+  const tagsById = tags.reduce((acc, t) => { acc[t.id] = t; return acc; }, {});
+  const visibleTasks = applyFilters(tasks, filters, userId, tagsById);
   const filtersActive = hasActiveFilters(filters);
   const hiddenCount = tasks.length - visibleTasks.length;
 
