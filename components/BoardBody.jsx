@@ -45,6 +45,9 @@ export default function BoardBody({
   // but not archived), 'archive' (archived). Archive is opt-in cleanup for
   // long-completed tasks.
   const [bottomView, setBottomView] = useState('hidden');
+  // Bulk-edit mode: clicking a card toggles selection instead of opening it.
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [draggingTaskId, setDraggingTaskId] = useState(null);
 
@@ -391,6 +394,48 @@ export default function BoardBody({
     if (error) await loadTasks();
   };
 
+  // Bulk operations. All run as a single supabase update with .in() — one
+  // round trip rather than N. Optimistic local update mirrors what the
+  // server will return to the realtime subscription.
+  const exitSelectionMode = () => { setSelectionMode(false); setSelectedIds(new Set()); };
+
+  const toggleSelected = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const bulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`Удалить ${selectedIds.size} задач безвозвратно?`)) return;
+    const ids = Array.from(selectedIds);
+    setTasks((prev) => prev.filter(t => !selectedIds.has(t.id)));
+    exitSelectionMode();
+    const { error } = await supabase.from('tasks').delete().in('id', ids);
+    if (error) await loadTasks();
+  };
+
+  const bulkArchive = async () => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    const archived_at = new Date().toISOString();
+    setTasks((prev) => prev.map(t => selectedIds.has(t.id) ? { ...t, archived_at } : t));
+    exitSelectionMode();
+    const { error } = await supabase.from('tasks').update({ archived_at }).in('id', ids);
+    if (error) await loadTasks();
+  };
+
+  const bulkMoveToQuadrant = async (important, urgent) => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    setTasks((prev) => prev.map(t => selectedIds.has(t.id) ? { ...t, important, urgent } : t));
+    exitSelectionMode();
+    const { error } = await supabase.from('tasks').update({ important, urgent }).in('id', ids);
+    if (error) await loadTasks();
+  };
+
   // Помощник/владелец завершает задачу с опциональным текстом.
   // В комнате вызывает RPC → триггер создаёт уведомление владельцу с note.
   // В личной доске просто помечает done.
@@ -558,6 +603,14 @@ export default function BoardBody({
               Архив
             </button>
           </div>
+          {(canEditTask || canDeleteTask) && (
+            <button
+              onClick={() => { if (selectionMode) exitSelectionMode(); else setSelectionMode(true); }}
+              className={`px-3 py-1.5 text-sm border rounded-lg ${selectionMode ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'}`}
+            >
+              {selectionMode ? 'Выйти из выделения' : 'Выделить'}
+            </button>
+          )}
           {canCreateTask && (
             <button onClick={openAdd} className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 flex items-center gap-2">
               <Plus size={16} /> Добавить задачу
@@ -565,6 +618,27 @@ export default function BoardBody({
           )}
         </div>
       </div>
+
+      {selectionMode && (
+        <div className="mb-3 flex items-center gap-2 flex-wrap bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+          <span className="text-sm text-gray-700">Выбрано: <strong>{selectedIds.size}</strong></span>
+          {canEditTask && (
+            <div className="inline-flex border border-gray-300 rounded-md overflow-hidden text-xs bg-white">
+              <button onClick={() => bulkMoveToQuadrant(true, true)} disabled={selectedIds.size === 0} className="px-2 py-1 hover:bg-gray-100 disabled:opacity-50">→ Важно/срочно</button>
+              <button onClick={() => bulkMoveToQuadrant(true, false)} disabled={selectedIds.size === 0} className="px-2 py-1 border-l border-gray-300 hover:bg-gray-100 disabled:opacity-50">→ Важно</button>
+              <button onClick={() => bulkMoveToQuadrant(false, true)} disabled={selectedIds.size === 0} className="px-2 py-1 border-l border-gray-300 hover:bg-gray-100 disabled:opacity-50">→ Срочно</button>
+              <button onClick={() => bulkMoveToQuadrant(false, false)} disabled={selectedIds.size === 0} className="px-2 py-1 border-l border-gray-300 hover:bg-gray-100 disabled:opacity-50">→ Не важно/не срочно</button>
+            </div>
+          )}
+          {canEditTask && (
+            <button onClick={bulkArchive} disabled={selectedIds.size === 0} className="px-2.5 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-100 disabled:opacity-50">В архив</button>
+          )}
+          {canDeleteTask && (
+            <button onClick={bulkDelete} disabled={selectedIds.size === 0} className="px-2.5 py-1 text-xs border border-red-300 text-red-700 rounded-md bg-white hover:bg-red-50 disabled:opacity-50">Удалить</button>
+          )}
+          <button onClick={exitSelectionMode} className="ml-auto text-xs text-gray-500 hover:text-gray-900 underline underline-offset-2">Отменить</button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {quadrants.map((q, idx) => {
@@ -595,21 +669,33 @@ export default function BoardBody({
                   const dueClasses = getDueClasses(task.due_at, task.done);
                   const isDragging = draggingTaskId === task.id;
                   const isOverdue = !!task.due_at && !task.done && new Date(task.due_at).getTime() < Date.now();
+                  const isSelected = selectionMode && selectedIds.has(task.id);
                   return (
                     <div
                       key={task.id}
-                      draggable={canEditTask}
+                      draggable={canEditTask && !selectionMode}
                       onDragStart={(e) => {
-                        if (!canEditTask) return;
+                        if (!canEditTask || selectionMode) return;
                         setDraggingTaskId(task.id);
                         e.dataTransfer.effectAllowed = 'move';
                         try { e.dataTransfer.setData('text/plain', task.id); } catch {}
                       }}
                       onDragEnd={() => { setDraggingTaskId(null); setDragOverQuadrant(null); }}
-                      onClick={() => { if (!draggingTaskId) setSelectedTask(task); }}
-                      className={`group border border-gray-200 rounded-md p-3 hover:border-gray-400 hover:shadow-sm bg-white transition-all ${canEditTask ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${isDragging ? 'opacity-40' : ''} ${isOverdue ? 'border-l-4 border-l-red-500' : ''}`}
+                      onClick={() => {
+                        if (selectionMode) { toggleSelected(task.id); return; }
+                        if (!draggingTaskId) setSelectedTask(task);
+                      }}
+                      className={`group border rounded-md p-3 hover:border-gray-400 hover:shadow-sm bg-white transition-all ${selectionMode ? 'cursor-pointer' : (canEditTask ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer')} ${isDragging ? 'opacity-40' : ''} ${isOverdue ? 'border-l-4 border-l-red-500' : ''} ${isSelected ? 'border-gray-900 bg-gray-50' : 'border-gray-200'}`}
                     >
                       <div className="flex items-start justify-between gap-2">
+                        {selectionMode && (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            readOnly
+                            className="w-4 h-4 mt-0.5 flex-shrink-0 pointer-events-none"
+                          />
+                        )}
                         <h3 className="text-sm font-medium text-gray-900 line-clamp-2 flex-1">{task.title}</h3>
                         <div className="flex items-center gap-1 flex-shrink-0">
                           {(task.assignees || []).length > 0 && (
