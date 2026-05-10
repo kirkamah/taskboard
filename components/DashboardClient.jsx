@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { LayoutGrid, Plus, Users, LogIn, X, Copy, Lock } from 'lucide-react';
+import { LayoutGrid, Plus, Users, LogIn, X, Copy, Lock, Calendar } from 'lucide-react';
 import { Modal } from '@/components/UI';
 
 export default function DashboardClient({ userName }) {
@@ -104,7 +104,7 @@ export default function DashboardClient({ userName }) {
         <p className="text-gray-500 mt-2">Выбери, что хочешь сделать</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <Link href="/my-board" className="bg-white border border-gray-200 rounded-lg p-6 text-left hover:border-gray-900 hover:shadow-sm transition-all">
           <LayoutGrid size={24} className="text-gray-700 mb-3" />
           <h2 className="font-semibold text-gray-900">Моя доска</h2>
@@ -121,6 +121,12 @@ export default function DashboardClient({ userName }) {
           <Users size={24} className="text-gray-700 mb-3" />
           <h2 className="font-semibold text-gray-900">Мои команды</h2>
           <p className="text-sm text-gray-500 mt-1">Комнаты, где ты участник</p>
+        </Link>
+
+        <Link href="/calendar" className="bg-white border border-gray-200 rounded-lg p-6 text-left hover:border-gray-900 hover:shadow-sm transition-all">
+          <Calendar size={24} className="text-gray-700 mb-3" />
+          <h2 className="font-semibold text-gray-900">Календарь</h2>
+          <p className="text-sm text-gray-500 mt-1">Все задачи с дедлайнами</p>
         </Link>
       </div>
 
