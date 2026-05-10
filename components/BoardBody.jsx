@@ -539,7 +539,6 @@ export default function BoardBody({
 
   const getName = (uid) => profiles[uid]?.display_name || 'Пользователь';
   const getProfile = (uid) => profiles[uid] || null;
-  const tagsById = tags.reduce((acc, t) => { acc[t.id] = t; return acc; }, {});
   const getTaskTags = (task) => (task.tagIds || []).map((id) => tagsById[id]).filter(Boolean);
 
   if (loading) {
