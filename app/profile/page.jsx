@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { KeyRound, ChevronRight, Webhook } from 'lucide-react';
+import { headers } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import Navbar from '@/components/Navbar';
 import ProfileClient from '@/components/ProfileClient';
+import IcalSection from '@/components/IcalSection';
 import { readLocale, tFor } from '@/lib/i18n/server';
 
 export default async function ProfilePage() {
@@ -13,9 +15,14 @@ export default async function ProfilePage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name, avatar_emoji, avatar_color, theme, locale')
+    .select('display_name, avatar_emoji, avatar_color, theme, locale, ical_token')
     .eq('id', user.id)
     .single();
+
+  const h = await headers();
+  const proto = h.get('x-forwarded-proto') || 'https';
+  const host = h.get('host') || '';
+  const origin = `${proto}://${host}`;
 
   const safeProfile = profile || { display_name: user.email.split('@')[0], avatar_emoji: null, avatar_color: 'gray', theme: 'light', locale: 'ru' };
   const userName = safeProfile.display_name || user.email.split('@')[0];
@@ -26,6 +33,11 @@ export default async function ProfilePage() {
     <>
       <Navbar userName={userName} userId={user.id} userProfile={safeProfile} locale={locale} />
       <ProfileClient userId={user.id} initialProfile={safeProfile} initialLocale={locale} />
+      <div className="max-w-2xl mx-auto px-6 pb-4">
+        <div className="bg-white border border-gray-200 rounded-lg p-6">
+          <IcalSection initialToken={safeProfile.ical_token || ''} origin={origin} locale={locale} />
+        </div>
+      </div>
       <div className="max-w-2xl mx-auto px-6 pb-10 space-y-3">
         <Link
           href="/profile/api-keys"
