@@ -6,8 +6,10 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { LayoutGrid, Plus, Users, LogIn, X, Copy, Lock, Calendar, BarChart3 } from 'lucide-react';
 import { Modal } from '@/components/UI';
+import { translate } from '@/lib/i18n';
 
-export default function DashboardClient({ userName }) {
+export default function DashboardClient({ userName, locale = 'ru' }) {
+  const t = (k, p) => translate(locale, k, p);
   const router = useRouter();
   const supabase = createClient();
 
@@ -100,48 +102,48 @@ export default function DashboardClient({ userName }) {
   return (
     <div className="max-w-4xl mx-auto px-6 py-12">
       <div className="text-center mb-10">
-        <h1 className="text-3xl font-semibold text-gray-900">Привет, {userName}</h1>
-        <p className="text-gray-500 mt-2">Выбери, что хочешь сделать</p>
+        <h1 className="text-3xl font-semibold text-gray-900">{t('dashboard.greeting', { name: userName })}</h1>
+        <p className="text-gray-500 mt-2">{t('dashboard.subtitle')}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <Link href="/my-board" className="bg-white border border-gray-200 rounded-lg p-6 text-left hover:border-gray-900 hover:shadow-sm transition-all">
           <LayoutGrid size={24} className="text-gray-700 mb-3" />
-          <h2 className="font-semibold text-gray-900">Моя доска</h2>
-          <p className="text-sm text-gray-500 mt-1">Личные задачи, видишь только ты</p>
+          <h2 className="font-semibold text-gray-900">{t('dashboard.tile.myBoard')}</h2>
+          <p className="text-sm text-gray-500 mt-1">{t('dashboard.tile.myBoardHint')}</p>
         </Link>
 
         <button onClick={() => setShowCreateModal(true)} className="bg-white border border-gray-200 rounded-lg p-6 text-left hover:border-gray-900 hover:shadow-sm transition-all">
           <Plus size={24} className="text-gray-700 mb-3" />
-          <h2 className="font-semibold text-gray-900">Создать комнату</h2>
-          <p className="text-sm text-gray-500 mt-1">Общая доска с кодом приглашения</p>
+          <h2 className="font-semibold text-gray-900">{t('dashboard.tile.createRoom')}</h2>
+          <p className="text-sm text-gray-500 mt-1">{t('dashboard.tile.createRoomHint')}</p>
         </button>
 
         <Link href="/teams" className="bg-white border border-gray-200 rounded-lg p-6 text-left hover:border-gray-900 hover:shadow-sm transition-all">
           <Users size={24} className="text-gray-700 mb-3" />
-          <h2 className="font-semibold text-gray-900">Мои команды</h2>
-          <p className="text-sm text-gray-500 mt-1">Комнаты, где ты участник</p>
+          <h2 className="font-semibold text-gray-900">{t('dashboard.tile.teams')}</h2>
+          <p className="text-sm text-gray-500 mt-1">{t('dashboard.tile.teamsHint')}</p>
         </Link>
 
         <Link href="/calendar" className="bg-white border border-gray-200 rounded-lg p-6 text-left hover:border-gray-900 hover:shadow-sm transition-all">
           <Calendar size={24} className="text-gray-700 mb-3" />
-          <h2 className="font-semibold text-gray-900">Календарь</h2>
-          <p className="text-sm text-gray-500 mt-1">Все задачи с дедлайнами</p>
+          <h2 className="font-semibold text-gray-900">{t('dashboard.tile.calendar')}</h2>
+          <p className="text-sm text-gray-500 mt-1">{t('dashboard.tile.calendarHint')}</p>
         </Link>
 
         <Link href="/stats" className="bg-white border border-gray-200 rounded-lg p-6 text-left hover:border-gray-900 hover:shadow-sm transition-all">
           <BarChart3 size={24} className="text-gray-700 mb-3" />
-          <h2 className="font-semibold text-gray-900">Статистика</h2>
-          <p className="text-sm text-gray-500 mt-1">Выполнения по дням и серии</p>
+          <h2 className="font-semibold text-gray-900">{t('dashboard.tile.stats')}</h2>
+          <p className="text-sm text-gray-500 mt-1">{t('dashboard.tile.statsHint')}</p>
         </Link>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-lg p-4 sm:p-6">
         <div className="flex items-center gap-2 mb-3">
           <LogIn size={18} className="text-gray-700" />
-          <h2 className="font-semibold text-gray-900">Присоединиться к чужой доске</h2>
+          <h2 className="font-semibold text-gray-900">{t('dashboard.join.title')}</h2>
         </div>
-        <p className="text-sm text-gray-500 mb-4">Введи код, который тебе прислали</p>
+        <p className="text-sm text-gray-500 mb-4">{t('dashboard.join.subtitle')}</p>
         <div className="flex gap-2">
           <input
             type="text"

@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import Navbar from '@/components/Navbar';
 import RoomClient from '@/components/RoomClient';
+import { readLocale } from '@/lib/i18n/server';
 
 export default async function RoomPage({ params }) {
   const { id } = await params;
@@ -52,15 +53,25 @@ export default async function RoomPage({ params }) {
   const currentProfile = profilesMap[user.id] || null;
   const userName = currentProfile?.display_name || user.email.split('@')[0];
 
+  // The room-members select above doesn't pull profile.locale; fetch it
+  // separately so server-rendered Navbar uses the user's preferred language.
+  const { data: localeRow } = await supabase
+    .from('profiles')
+    .select('locale')
+    .eq('id', user.id)
+    .maybeSingle();
+  const locale = await readLocale({ profileLocale: localeRow?.locale });
+
   return (
     <>
-      <Navbar userName={userName} userId={user.id} userProfile={currentProfile} />
+      <Navbar userName={userName} userId={user.id} userProfile={currentProfile} locale={locale} />
       <RoomClient
         room={room}
         initialMembers={members || []}
         initialProfiles={profilesMap}
         initialRoles={roles || []}
         userId={user.id}
+        locale={locale}
       />
     </>
   );

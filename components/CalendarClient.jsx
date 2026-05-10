@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { translate } from '@/lib/i18n';
 
 // Month grid showing all tasks with due_at the user can read (personal +
 // rooms they're in). Click a cell to focus a day; click a task to jump to
@@ -33,7 +34,8 @@ function quadrantClasses(important, urgent) {
   return 'bg-gray-100 text-gray-700';
 }
 
-export default function CalendarClient({ userId }) {
+export default function CalendarClient({ userId, locale = 'ru' }) {
+  const t = (k, p) => translate(locale, k, p);
   const supabase = createClient();
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
   const [tasks, setTasks] = useState([]);
@@ -132,10 +134,10 @@ export default function CalendarClient({ userId }) {
           <ChevronRight size={16} />
         </button>
         <button onClick={() => setCursor(startOfMonth(new Date()))} className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 inline-flex items-center gap-1">
-          <CalendarIcon size={14} /> Сегодня
+          <CalendarIcon size={14} /> {t('calendar.today')}
         </button>
         <h2 className="ml-2 text-lg font-semibold text-gray-900">{monthLabel}</h2>
-        {loading && <span className="text-xs text-gray-400 ml-2">Загрузка…</span>}
+        {loading && <span className="text-xs text-gray-400 ml-2">{t('common.loading')}</span>}
       </div>
 
       <div className="grid grid-cols-7 gap-px bg-gray-200 border border-gray-200 rounded-lg overflow-hidden">
@@ -183,23 +185,23 @@ export default function CalendarClient({ userId }) {
             {new Date(selectedDay).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
           </h3>
           {(tasksByDay[selectedDay] || []).length === 0 ? (
-            <p className="text-sm text-gray-500">Задач на этот день нет.</p>
+            <p className="text-sm text-gray-500">{t('calendar.dayEmpty')}</p>
           ) : (
             <div className="space-y-2">
-              {(tasksByDay[selectedDay] || []).map((t) => (
+              {(tasksByDay[selectedDay] || []).map((task) => (
                 <Link
-                  key={t.id}
-                  href={taskHref(t)}
+                  key={task.id}
+                  href={taskHref(task)}
                   className="flex items-center justify-between border border-gray-200 rounded-md p-2 hover:bg-gray-50"
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className={`inline-block w-2 h-2 rounded-full ${quadrantClasses(t.important, t.urgent).split(' ')[0]}`} />
-                    <span className={`text-sm truncate ${t.done ? 'line-through text-gray-400' : 'text-gray-900'}`}>{t.title}</span>
+                    <span className={`inline-block w-2 h-2 rounded-full ${quadrantClasses(task.important, task.urgent).split(' ')[0]}`} />
+                    <span className={`text-sm truncate ${task.done ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.title}</span>
                   </div>
                   <span className="text-xs text-gray-400 ml-2 flex-shrink-0">
-                    {t.room_id ? rooms[t.room_id] || 'Комната' : 'Личная'}
+                    {task.room_id ? rooms[task.room_id] || t('calendar.scopeRoom') : t('calendar.scopePersonal')}
                     {' · '}
-                    {new Date(t.due_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                    {new Date(task.due_at).toLocaleTimeString(locale === 'en' ? 'en-US' : 'ru-RU', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </Link>
               ))}

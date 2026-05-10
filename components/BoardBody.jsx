@@ -17,6 +17,7 @@ import MentionInput from './MentionInput';
 import SubtasksList from './SubtasksList';
 import PomodoroTimer from './PomodoroTimer';
 import { extractMentions, newMentions } from '@/lib/mentions';
+import { translate } from '@/lib/i18n';
 import { DEFAULT_FILTERS, loadFilters, saveFilters, applyFilters, hasActiveFilters } from '@/lib/taskFilters';
 
 /**
@@ -39,7 +40,9 @@ export default function BoardBody({
   profiles = {},
   myMember = null,
   tags = [],
+  locale = 'ru',
 }) {
+  const t = (k, p) => translate(locale, k, p);
   const supabase = createClient();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -227,10 +230,10 @@ export default function BoardBody({
   }, [scope, roomId, userId, loadTasks]);
 
   const quadrants = [
-    { important: true, urgent: true, title: 'Важно и срочно' },
-    { important: true, urgent: false, title: 'Важно, не срочно' },
-    { important: false, urgent: true, title: 'Не важно, срочно' },
-    { important: false, urgent: false, title: 'Не важно, не срочно' }
+    { important: true, urgent: true, title: t('board.quadrant.do') },
+    { important: true, urgent: false, title: t('board.quadrant.plan') },
+    { important: false, urgent: true, title: t('board.quadrant.delegate') },
+    { important: false, urgent: false, title: t('board.quadrant.drop') }
   ];
 
   // Templates -----------------------------------------------------------------
@@ -699,11 +702,11 @@ export default function BoardBody({
       />
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="text-sm text-gray-500">
-          {visibleTasks.filter(t => !t.done && !t.archived_at).length} активных · {completedTasks.length} выполнено · {archivedTasks.length} в архиве
+          {visibleTasks.filter(x => !x.done && !x.archived_at).length} {t('board.summary.active')} · {completedTasks.length} {t('board.summary.done')} · {archivedTasks.length} {t('board.summary.archived')}
           {filtersActive && hiddenCount > 0 && (
-            <span className="ml-2 text-gray-400">· фильтры скрывают {hiddenCount}</span>
+            <span className="ml-2 text-gray-400">{t('board.summary.hidden', { n: hiddenCount })}</span>
           )}
-          {!canEdit && <span className="ml-2 text-yellow-700">· Только просмотр — у вашей роли нет прав на изменение</span>}
+          {!canEdit && <span className="ml-2 text-yellow-700">{t('board.summary.viewOnly')}</span>}
         </div>
         <div className="flex gap-2">
           <div className="inline-flex border border-gray-300 rounded-lg overflow-hidden text-sm">
@@ -711,13 +714,13 @@ export default function BoardBody({
               onClick={() => setBottomView(bottomView === 'completed' ? 'hidden' : 'completed')}
               className={`px-3 py-1.5 ${bottomView === 'completed' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}
             >
-              Выполненные
+              {t('board.toolbar.completed')}
             </button>
             <button
               onClick={() => setBottomView(bottomView === 'archive' ? 'hidden' : 'archive')}
               className={`px-3 py-1.5 border-l border-gray-300 ${bottomView === 'archive' ? 'bg-gray-900 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}
             >
-              Архив
+              {t('board.toolbar.archive')}
             </button>
           </div>
           {(canEditTask || canDeleteTask) && (

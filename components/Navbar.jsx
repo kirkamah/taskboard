@@ -10,9 +10,11 @@ import {
 } from 'lucide-react';
 import LinkifiedText from './LinkifiedText';
 import Avatar from './Avatar';
+import { translate } from '@/lib/i18n';
 import { applyTheme } from '@/lib/theme';
 
-export default function Navbar({ userName, userId, userProfile }) {
+export default function Navbar({ userName, userId, userProfile, locale = 'ru' }) {
+  const t = (k, p) => translate(locale, k, p);
   const router = useRouter();
   const supabase = createClient();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -166,7 +168,7 @@ export default function Navbar({ userName, userId, userProfile }) {
                 onClick={closeMenu}
                 className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
               >
-                <User size={14} /> Профиль
+                <User size={14} /> {t('nav.profile')}
               </Link>
               <Link
                 href="/profile/api-keys"
@@ -180,7 +182,7 @@ export default function Navbar({ userName, userId, userProfile }) {
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
               >
                 <Bell size={14} />
-                <span className="flex-1 text-left">Уведомления</span>
+                <span className="flex-1 text-left">{t('nav.notifications')}</span>
                 {unreadCount > 0 && (
                   <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-semibold rounded-full flex items-center justify-center">
                     {unreadCount > 99 ? '99+' : unreadCount}
@@ -191,7 +193,7 @@ export default function Navbar({ userName, userId, userProfile }) {
                 onClick={handleLogout}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
               >
-                <LogOut size={14} /> Выйти
+                <LogOut size={14} /> {t('nav.logout')}
               </button>
             </div>
           )}
@@ -206,12 +208,12 @@ export default function Navbar({ userName, userId, userProfile }) {
                 >
                   <ArrowLeft size={16} />
                 </button>
-                <h3 className="font-semibold text-gray-900 text-sm flex-1">Уведомления</h3>
+                <h3 className="font-semibold text-gray-900 text-sm flex-1">{t('nav.notifications')}</h3>
                 {unreadCount > 0 && <span className="text-xs text-gray-500">{unreadCount} новых</span>}
               </div>
               <div className="max-h-[70vh] overflow-y-auto">
                 {items.length === 0 ? (
-                  <div className="px-4 py-8 text-center text-sm text-gray-400">Уведомлений пока нет</div>
+                  <div className="px-4 py-8 text-center text-sm text-gray-400">{t('nav.notifications.empty')}</div>
                 ) : (
                   items.map((n) => {
                     const meta = typeMeta(n.type);

@@ -68,7 +68,7 @@ function formatAgo(iso) {
   return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 }
 
-export default function RoomClient({ room, initialMembers, initialProfiles, initialRoles, userId }) {
+export default function RoomClient({ room, initialMembers, initialProfiles, initialRoles, userId, locale = 'ru' }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -513,6 +513,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, init
             profiles={profiles}
             myMember={me}
             tags={tags}
+            locale={locale}
           />
         </div>
 

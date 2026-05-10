@@ -6,6 +6,7 @@ import { ArrowLeft, Check, Smile, Type, Palette } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Avatar, { AVATAR_COLORS, avatarBgClass } from '@/components/Avatar';
 import PushToggle from '@/components/PushToggle';
+import LocaleSwitcher from '@/components/LocaleSwitcher';
 import { THEMES, THEME_LABELS, THEME_DESCRIPTIONS, applyTheme } from '@/lib/theme';
 
 // Small preview tile shown in the theme picker — a surface swatch with an
@@ -35,7 +36,7 @@ const COLOR_LABEL = {
   purple: 'Фиолетовый',
 };
 
-export default function ProfileClient({ userId, initialProfile }) {
+export default function ProfileClient({ userId, initialProfile, initialLocale = 'ru' }) {
   const supabase = createClient();
   const [displayName, setDisplayName] = useState(initialProfile.display_name || '');
   const [avatarEmoji, setAvatarEmoji] = useState(initialProfile.avatar_emoji || null);
@@ -237,8 +238,16 @@ export default function ProfileClient({ userId, initialProfile }) {
         </div>
 
         <div className="pt-6 border-t border-gray-100">
-          <h2 className="text-sm font-medium text-gray-700 uppercase tracking-wide mb-3">Уведомления</h2>
+          <h2 className="text-sm font-medium text-gray-700 uppercase tracking-wide mb-3">Уведомления / Notifications</h2>
           <PushToggle userId={userId} />
+        </div>
+
+        <div className="pt-6 border-t border-gray-100">
+          <h2 className="text-sm font-medium text-gray-700 uppercase tracking-wide mb-3">Язык / Language</h2>
+          <LocaleSwitcher initialLocale={initialLocale} />
+          <p className="text-xs text-gray-500 mt-2">
+            Применяется сразу. / Applies right away.
+          </p>
         </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}

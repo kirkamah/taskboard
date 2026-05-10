@@ -5,7 +5,7 @@ import BoardBody from '@/components/BoardBody';
 import TagsPanel from '@/components/TagsPanel';
 import { createClient } from '@/lib/supabase/client';
 
-export default function MyBoardClient({ userId, userProfile = null }) {
+export default function MyBoardClient({ userId, userProfile = null, locale = 'ru' }) {
   const supabase = createClient();
   const [tags, setTags] = useState([]);
   // BoardBody/TaskComments use a profiles-by-id map for author names. On the
@@ -37,7 +37,7 @@ export default function MyBoardClient({ userId, userProfile = null }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
       <div className="lg:col-span-3">
-        <BoardBody scope="personal" userId={userId} tags={tags} profiles={profiles} />
+        <BoardBody scope="personal" userId={userId} tags={tags} profiles={profiles} locale={locale} />
       </div>
       <div>
         <TagsPanel ownerId={userId} tags={tags} />

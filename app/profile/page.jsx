@@ -12,17 +12,17 @@ export default async function ProfilePage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name, avatar_emoji, avatar_color, theme')
+    .select('display_name, avatar_emoji, avatar_color, theme, locale')
     .eq('id', user.id)
     .single();
 
-  const safeProfile = profile || { display_name: user.email.split('@')[0], avatar_emoji: null, avatar_color: 'gray', theme: 'light' };
+  const safeProfile = profile || { display_name: user.email.split('@')[0], avatar_emoji: null, avatar_color: 'gray', theme: 'light', locale: 'ru' };
   const userName = safeProfile.display_name || user.email.split('@')[0];
 
   return (
     <>
       <Navbar userName={userName} userId={user.id} userProfile={safeProfile} />
-      <ProfileClient userId={user.id} initialProfile={safeProfile} />
+      <ProfileClient userId={user.id} initialProfile={safeProfile} initialLocale={safeProfile.locale || 'ru'} />
       <div className="max-w-2xl mx-auto px-6 pb-10 space-y-3">
         <Link
           href="/profile/api-keys"

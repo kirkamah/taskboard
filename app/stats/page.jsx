@@ -3,6 +3,7 @@ import { ArrowLeft, BarChart3, Flame, Trophy, CheckCircle2, Archive as ArchiveIc
 import { createClient } from '@/lib/supabase/server';
 import Navbar from '@/components/Navbar';
 import Tag from '@/components/Tag';
+import { readLocale, tFor } from '@/lib/i18n/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,10 +53,12 @@ export default async function StatsPage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name, avatar_emoji, avatar_color')
+    .select('display_name, avatar_emoji, avatar_color, locale')
     .eq('id', user.id)
     .single();
   const userName = profile?.display_name || user.email.split('@')[0];
+  const locale = await readLocale({ profileLocale: profile?.locale });
+  const t = tFor(locale);
 
   // Rooms the user can read tasks from.
   const { data: memberships } = await supabase
@@ -159,25 +162,25 @@ export default async function StatsPage() {
 
   return (
     <>
-      <Navbar userName={userName} userId={user.id} userProfile={profile} />
+      <Navbar userName={userName} userId={user.id} userProfile={profile} locale={locale} />
       <div className="max-w-5xl mx-auto px-6 py-6">
         <Link href="/dashboard" className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1 mb-2">
-          <ArrowLeft size={16} /> На главную
+          <ArrowLeft size={16} /> {t('nav.backToDashboard')}
         </Link>
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2"><BarChart3 size={22} /> Статистика</h1>
-          <p className="text-sm text-gray-500 mt-1">По всем твоим задачам — личным и из комнат</p>
+          <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2"><BarChart3 size={22} /> {t('stats.title')}</h1>
+          <p className="text-sm text-gray-500 mt-1">{t('stats.subtitle')}</p>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <StatCard icon={<Flame size={16} />} title="Текущая серия" value={`${current} ${plural(current, ['день', 'дня', 'дней'])}`} hint="дней подряд с выполнением" />
-          <StatCard icon={<Trophy size={16} />} title="Лучшая серия" value={`${longest} ${plural(longest, ['день', 'дня', 'дней'])}`} hint="за последние 90 дней" />
-          <StatCard icon={<CheckCircle2 size={16} />} title="Выполнено за 30 дней" value={String(total30)} hint="по событиям" />
-          <StatCard icon={<ListTodo size={16} />} title="Активных задач" value={String(personalActive + roomActive)} hint={`${personalActive} личных + ${roomActive} в комнатах`} />
+          <StatCard icon={<Flame size={16} />} title={t('stats.currentStreak')} value={`${current} ${dayPlural(current, locale)}`} hint={t('stats.currentStreakHint')} />
+          <StatCard icon={<Trophy size={16} />} title={t('stats.bestStreak')} value={`${longest} ${dayPlural(longest, locale)}`} hint={t('stats.bestStreakHint')} />
+          <StatCard icon={<CheckCircle2 size={16} />} title={t('stats.completed30')} value={String(total30)} hint={t('stats.completed30Hint')} />
+          <StatCard icon={<ListTodo size={16} />} title={t('stats.activeCount')} value={String(personalActive + roomActive)} hint={`${personalActive} ${locale === 'en' ? 'personal' : 'личных'} + ${roomActive} ${locale === 'en' ? 'in rooms' : 'в комнатах'}`} />
         </div>
 
         <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6">
-          <h2 className="font-semibold text-gray-900 mb-3">Выполнения за 30 дней</h2>
+          <h2 className="font-semibold text-gray-900 mb-3">{t('stats.chartTitle')}</h2>
           <div className="flex items-end gap-1 h-32 mt-2">
             {days30.map((d) => (
               <div key={d.key} className="flex-1 flex flex-col items-center justify-end" title={`${d.label} — ${d.count}`}>
@@ -193,26 +196,26 @@ export default async function StatsPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div className="bg-white border border-gray-200 rounded-lg p-4">
-            <h2 className="font-semibold text-gray-900 mb-3">По разделам</h2>
+            <h2 className="font-semibold text-gray-900 mb-3">{t('stats.bySectionTitle')}</h2>
             <table className="w-full text-sm">
-              <thead><tr className="text-xs text-gray-500"><th className="text-left font-medium pb-1"></th><th className="text-right font-medium pb-1">Активные</th><th className="text-right font-medium pb-1">Выполнено</th><th className="text-right font-medium pb-1">В архиве</th></tr></thead>
+              <thead><tr className="text-xs text-gray-500"><th className="text-left font-medium pb-1"></th><th className="text-right font-medium pb-1">{t('stats.col.active')}</th><th className="text-right font-medium pb-1">{t('stats.col.done')}</th><th className="text-right font-medium pb-1">{t('stats.col.archived')}</th></tr></thead>
               <tbody>
-                <tr className="border-t border-gray-100"><td className="py-1.5 text-gray-700">Личные</td><td className="text-right">{personalActive}</td><td className="text-right">{personalDone}</td><td className="text-right">{personalArchived}</td></tr>
-                <tr className="border-t border-gray-100"><td className="py-1.5 text-gray-700">Комнаты</td><td className="text-right">{roomActive}</td><td className="text-right">{roomDone}</td><td className="text-right">{roomArchived}</td></tr>
+                <tr className="border-t border-gray-100"><td className="py-1.5 text-gray-700">{t('stats.section.personal')}</td><td className="text-right">{personalActive}</td><td className="text-right">{personalDone}</td><td className="text-right">{personalArchived}</td></tr>
+                <tr className="border-t border-gray-100"><td className="py-1.5 text-gray-700">{t('stats.section.rooms')}</td><td className="text-right">{roomActive}</td><td className="text-right">{roomDone}</td><td className="text-right">{roomArchived}</td></tr>
               </tbody>
             </table>
           </div>
 
           <div className="bg-white border border-gray-200 rounded-lg p-4">
-            <h2 className="font-semibold text-gray-900 mb-3">Часто используемые теги</h2>
+            <h2 className="font-semibold text-gray-900 mb-3">{t('stats.topTagsTitle')}</h2>
             {topTags.length === 0 ? (
-              <p className="text-sm text-gray-500">Пока ничего не помечено тегами.</p>
+              <p className="text-sm text-gray-500">{t('stats.topTagsEmpty')}</p>
             ) : (
               <ul className="space-y-2">
-                {topTags.map((t) => (
-                  <li key={t.id} className="flex items-center justify-between">
-                    <Tag tag={t} />
-                    <span className="text-sm text-gray-500">{t.count} {plural(t.count, ['задача', 'задачи', 'задач'])}</span>
+                {topTags.map((tag) => (
+                  <li key={tag.id} className="flex items-center justify-between">
+                    <Tag tag={tag} />
+                    <span className="text-sm text-gray-500">{tag.count} {taskPlural(tag.count, locale)}</span>
                   </li>
                 ))}
               </ul>
@@ -241,4 +244,14 @@ function plural(n, forms) {
   if (last === 1) return forms[0];
   if (last >= 2 && last <= 4) return forms[1];
   return forms[2];
+}
+
+function dayPlural(n, locale) {
+  if (locale === 'en') return n === 1 ? 'day' : 'days';
+  return plural(n, ['день', 'дня', 'дней']);
+}
+
+function taskPlural(n, locale) {
+  if (locale === 'en') return n === 1 ? 'task' : 'tasks';
+  return plural(n, ['задача', 'задачи', 'задач']);
 }
