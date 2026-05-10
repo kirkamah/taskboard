@@ -440,17 +440,34 @@ export default function BoardBody({
   };
 
   // Формат даты для отображения: "сегодня, 14:30" / "завтра, 09:00" / "15 мая, 14:30"
+  const pluralDays = (n) => {
+    const tens = Math.floor((n % 100) / 10);
+    const last = n % 10;
+    if (tens === 1) return 'дней';
+    if (last === 1) return 'день';
+    if (last >= 2 && last <= 4) return 'дня';
+    return 'дней';
+  };
+
   const formatDue = (iso) => {
     if (!iso) return null;
     const d = new Date(iso);
     const now = new Date();
+    const diffMs = d.getTime() - now.getTime();
     const sameDay = d.toDateString() === now.toDateString();
     const tomorrow = new Date(now);
     tomorrow.setDate(now.getDate() + 1);
     const sameTomorrow = d.toDateString() === tomorrow.toDateString();
     const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-    if (sameDay) return `сегодня, ${time}`;
-    if (sameTomorrow) return `завтра, ${time}`;
+    // Overdue and not from today: explicit relative label.
+    if (diffMs < 0 && !sameDay) {
+      const days = Math.floor(-diffMs / (24 * 60 * 60 * 1000));
+      if (days <= 0) return `Просрочено, ${time}`;
+      if (days === 1) return 'Просрочено · вчера';
+      return `Просрочено · ${days} ${pluralDays(days)}`;
+    }
+    if (sameDay) return diffMs < 0 ? `Сегодня, ${time} (просрочено)` : `Сегодня, ${time}`;
+    if (sameTomorrow) return `Завтра, ${time}`;
     const date = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
     return `${date}, ${time}`;
   };
@@ -536,6 +553,7 @@ export default function BoardBody({
                 {qTasks.map(task => {
                   const dueClasses = getDueClasses(task.due_at, task.done);
                   const isDragging = draggingTaskId === task.id;
+                  const isOverdue = !!task.due_at && !task.done && new Date(task.due_at).getTime() < Date.now();
                   return (
                     <div
                       key={task.id}
@@ -548,7 +566,7 @@ export default function BoardBody({
                       }}
                       onDragEnd={() => { setDraggingTaskId(null); setDragOverQuadrant(null); }}
                       onClick={() => { if (!draggingTaskId) setSelectedTask(task); }}
-                      className={`group border border-gray-200 rounded-md p-3 hover:border-gray-400 hover:shadow-sm bg-white transition-all ${canEditTask ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${isDragging ? 'opacity-40' : ''}`}
+                      className={`group border border-gray-200 rounded-md p-3 hover:border-gray-400 hover:shadow-sm bg-white transition-all ${canEditTask ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${isDragging ? 'opacity-40' : ''} ${isOverdue ? 'border-l-4 border-l-red-500' : ''}`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="text-sm font-medium text-gray-900 line-clamp-2 flex-1">{task.title}</h3>
