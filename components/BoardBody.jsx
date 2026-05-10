@@ -15,6 +15,7 @@ import TaskHistory from './TaskHistory';
 import TaskAttachments from './TaskAttachments';
 import MentionInput from './MentionInput';
 import SubtasksList from './SubtasksList';
+import TaskWatcher from './TaskWatcher';
 import { extractMentions, newMentions } from '@/lib/mentions';
 import { translate } from '@/lib/i18n';
 
@@ -1020,6 +1021,7 @@ export default function BoardBody({
                     <Repeat size={11} /> {t(`task.recurrence.tag${selectedTask.recurrence.charAt(0).toUpperCase() + selectedTask.recurrence.slice(1)}`)}
                   </span>
                 )}
+                <TaskWatcher taskId={selectedTask.id} userId={userId} locale={locale} />
               </div>
             </div>
             <button onClick={() => setSelectedTask(null)} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>

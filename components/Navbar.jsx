@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
   LogOut, User, ChevronDown, ChevronUp, Bell, MessageSquare, Check, X, Crown, ArrowLeft, KeyRound,
-  UserPlus, UserCheck, UserX, AtSign,
+  UserPlus, UserCheck, UserX, AtSign, Eye,
 } from 'lucide-react';
 import LinkifiedText from './LinkifiedText';
 import Avatar from './Avatar';
@@ -126,6 +126,8 @@ export default function Navbar({ userName, userId, userProfile, locale = 'ru' })
       case 'join_request_approved': return { label: t('nav.notif.joinApproved'), Icon: UserCheck, color: 'text-green-600' };
       case 'join_request_rejected': return { label: t('nav.notif.joinRejected'), Icon: UserX, color: 'text-red-600' };
       case 'mention': return { label: t('nav.notif.mention'), Icon: AtSign, color: 'text-blue-600' };
+      case 'task_watch_update': return { label: t('watch.notif.update'), Icon: Eye, color: 'text-gray-600' };
+      case 'task_watch_comment': return { label: t('watch.notif.comment'), Icon: MessageSquare, color: 'text-gray-600' };
       default: return { label: t('nav.notif.default'), Icon: MessageSquare, color: 'text-gray-600' };
     }
   };
@@ -240,7 +242,7 @@ export default function Navbar({ userName, userId, userProfile, locale = 'ru' })
                     const requestNote = n.payload?.request_note;
                     const responseNote = n.payload?.response_note;
                     const completionNote = n.payload?.completion_note;
-                    const mentionSnippet = n.type === 'mention' ? n.payload?.snippet : null;
+                    const mentionSnippet = (n.type === 'mention' || n.type === 'task_watch_comment') ? n.payload?.snippet : null;
                     const goLabel = isOwnership || isJoinRequest ? t('nav.notif.goToRoom') : t('nav.notif.goToTask');
                     const { Icon } = meta;
 
