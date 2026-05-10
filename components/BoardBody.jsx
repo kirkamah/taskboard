@@ -12,6 +12,7 @@ import { hasPermission } from '@/lib/permissions';
 import TaskFilters from './TaskFilters';
 import TaskComments from './TaskComments';
 import TaskHistory from './TaskHistory';
+import TaskAttachments from './TaskAttachments';
 import { DEFAULT_FILTERS, loadFilters, saveFilters, applyFilters, hasActiveFilters } from '@/lib/taskFilters';
 
 /**
@@ -897,6 +898,12 @@ export default function BoardBody({
                 </div>
               </div>
             )}
+            <TaskAttachments
+              taskId={selectedTask.id}
+              userId={userId}
+              profiles={profiles}
+              canModerate={isRoomOwner}
+            />
             <TaskComments
               taskId={selectedTask.id}
               userId={userId}
