@@ -9,6 +9,7 @@ import Tag from './Tag';
 import { createClient } from '@/lib/supabase/client';
 import { hasPermission } from '@/lib/permissions';
 import TaskFilters from './TaskFilters';
+import TaskComments from './TaskComments';
 import { DEFAULT_FILTERS, loadFilters, saveFilters, applyFilters, hasActiveFilters } from '@/lib/taskFilters';
 
 /**
@@ -737,6 +738,12 @@ export default function BoardBody({
                 </div>
               </div>
             )}
+            <TaskComments
+              taskId={selectedTask.id}
+              userId={userId}
+              profiles={profiles}
+              canModerate={isRoomOwner}
+            />
             {/* Для участников с approve_completion_requests: список активных запросов */}
             {isRoom && canApproveRequests && (selectedTask.pendingRequests || []).length > 0 && (
               <div className="mt-4 pt-4 border-t border-gray-100">

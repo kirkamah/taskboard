@@ -27,7 +27,7 @@ export default async function MyBoardPage() {
           <h1 className="text-2xl font-semibold text-gray-900">Моя доска</h1>
           <p className="text-sm text-gray-500 mt-1">Личные задачи · видите только вы</p>
         </div>
-        <MyBoardClient userId={user.id} />
+        <MyBoardClient userId={user.id} userProfile={profile} />
       </div>
     </>
   );

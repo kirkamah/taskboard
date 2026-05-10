@@ -5,9 +5,12 @@ import BoardBody from '@/components/BoardBody';
 import TagsPanel from '@/components/TagsPanel';
 import { createClient } from '@/lib/supabase/client';
 
-export default function MyBoardClient({ userId }) {
+export default function MyBoardClient({ userId, userProfile = null }) {
   const supabase = createClient();
   const [tags, setTags] = useState([]);
+  // BoardBody/TaskComments use a profiles-by-id map for author names. On the
+  // personal board the only author is the current user.
+  const profiles = userProfile ? { [userId]: userProfile } : {};
 
   useEffect(() => {
     let alive = true;
@@ -34,7 +37,7 @@ export default function MyBoardClient({ userId }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
       <div className="lg:col-span-3">
-        <BoardBody scope="personal" userId={userId} tags={tags} />
+        <BoardBody scope="personal" userId={userId} tags={tags} profiles={profiles} />
       </div>
       <div>
         <TagsPanel ownerId={userId} tags={tags} />
