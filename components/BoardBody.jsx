@@ -15,6 +15,7 @@ import TaskHistory from './TaskHistory';
 import TaskAttachments from './TaskAttachments';
 import MentionInput from './MentionInput';
 import SubtasksList from './SubtasksList';
+import PomodoroTimer from './PomodoroTimer';
 import { extractMentions, newMentions } from '@/lib/mentions';
 import { DEFAULT_FILTERS, loadFilters, saveFilters, applyFilters, hasActiveFilters } from '@/lib/taskFilters';
 
@@ -1060,6 +1061,11 @@ export default function BoardBody({
                 </div>
               </div>
             )}
+            <PomodoroTimer
+              taskId={selectedTask.id}
+              initialSpentMinutes={selectedTask.time_spent_minutes || 0}
+              canEdit={canEditTask || canCreateTask || isPersonal}
+            />
             <SubtasksList
               parent={selectedTask}
               userId={userId}
