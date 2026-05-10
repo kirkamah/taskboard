@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus, MessageSquare, Send, Tag as TagIcon, ListChecks, Bot } from 'lucide-react';
+import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus, MessageSquare, Send, Tag as TagIcon, ListChecks, ListTree, Bot } from 'lucide-react';
 import { Modal, Toggle } from './UI';
 import LinkifiedText from './LinkifiedText';
 import Markdown from './Markdown';
@@ -14,6 +14,7 @@ import TaskComments from './TaskComments';
 import TaskHistory from './TaskHistory';
 import TaskAttachments from './TaskAttachments';
 import MentionInput from './MentionInput';
+import SubtasksList from './SubtasksList';
 import { extractMentions, newMentions } from '@/lib/mentions';
 import { DEFAULT_FILTERS, loadFilters, saveFilters, applyFilters, hasActiveFilters } from '@/lib/taskFilters';
 
@@ -310,9 +311,20 @@ export default function BoardBody({
   const filtersActive = hasActiveFilters(filters);
   const hiddenCount = tasks.length - visibleTasks.length;
 
-  const getTasksFor = (imp, urg) => visibleTasks.filter(t => t.important === imp && t.urgent === urg && !t.done && !t.archived_at);
-  const completedTasks = visibleTasks.filter(t => t.done && !t.archived_at);
-  const archivedTasks = visibleTasks.filter(t => !!t.archived_at);
+  // Subtask aggregates: parent_task_id → { total, done } so cards can show a
+  // tiny "M/N" progress chip without an extra query.
+  const subtaskAgg = tasks.reduce((acc, t) => {
+    if (!t.parent_task_id || t.archived_at) return acc;
+    const cur = acc[t.parent_task_id] || { total: 0, done: 0 };
+    cur.total += 1;
+    if (t.done) cur.done += 1;
+    acc[t.parent_task_id] = cur;
+    return acc;
+  }, {});
+
+  const getTasksFor = (imp, urg) => visibleTasks.filter(t => t.important === imp && t.urgent === urg && !t.done && !t.archived_at && !t.parent_task_id);
+  const completedTasks = visibleTasks.filter(t => t.done && !t.archived_at && !t.parent_task_id);
+  const archivedTasks = visibleTasks.filter(t => !!t.archived_at && !t.parent_task_id);
 
   const openAdd = () => {
     setFormData({ title: '', description: '', important: true, urgent: true, due_at: '', assignees: [], tags: [], checklist: [] });
@@ -874,6 +886,15 @@ export default function BoardBody({
                             </div>
                           );
                         })()}
+                        {subtaskAgg[task.id] && (() => {
+                          const { total, done } = subtaskAgg[task.id];
+                          const complete = total > 0 && done === total;
+                          return (
+                            <div className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded ${complete ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200 bg-gray-50 text-gray-600'}`} title="Подзадачи">
+                              <ListTree size={10} /> {done}/{total}
+                            </div>
+                          );
+                        })()}
                         {task.due_at && (
                           <div className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded ${dueClasses}`}>
                             <Calendar size={10} /> {formatDue(task.due_at)}
@@ -1039,6 +1060,30 @@ export default function BoardBody({
                 </div>
               </div>
             )}
+            <SubtasksList
+              parent={selectedTask}
+              userId={userId}
+              canEdit={canEditTask || canCreateTask}
+              onOpen={async (subId) => {
+                const { data } = await supabase
+                  .from('tasks')
+                  .select('*, task_assignees(user_id), task_completion_requests(id, requester_id, request_note, status, created_at), task_tags(tag_id), task_checklist_items(id, text, done, position)')
+                  .eq('id', subId)
+                  .single();
+                if (data) {
+                  setSelectedTask({
+                    ...data,
+                    assignees: (data.task_assignees || []).map((a) => a.user_id),
+                    pendingRequests: (data.task_completion_requests || []).filter(r => r.status === 'pending'),
+                    tagIds: (data.task_tags || []).map((tt) => tt.tag_id),
+                    checklist: (data.task_checklist_items || [])
+                      .slice()
+                      .sort((a, b) => a.position - b.position || a.id.localeCompare(b.id))
+                      .map((it) => ({ id: it.id, text: it.text, done: it.done })),
+                  });
+                }
+              }}
+            />
             <TaskAttachments
               taskId={selectedTask.id}
               userId={userId}
