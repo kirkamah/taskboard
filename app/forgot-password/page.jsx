@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { translate, getClientLocale } from '@/lib/i18n';
 
 export default function ForgotPasswordPage() {
   const supabase = createClient();
@@ -10,6 +11,9 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [locale, setLocale] = useState('ru');
+  useEffect(() => { setLocale(getClientLocale()); }, []);
+  const t = (k, p) => translate(locale, k, p);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,17 +33,15 @@ export default function ForgotPasswordPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-6">
       <div className="w-full max-w-md bg-white border border-gray-200 rounded-lg p-8">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-1">Восстановление пароля</h1>
-        <p className="text-sm text-gray-500 mb-6">Введите email от вашего аккаунта</p>
+        <h1 className="text-2xl font-semibold text-gray-900 mb-1">{t('auth.forgot.title')}</h1>
+        <p className="text-sm text-gray-500 mb-6">{t('auth.forgot.subtitle')}</p>
 
         {sent ? (
-          <p className="text-sm text-gray-700">
-            Если такой email зарегистрирован, мы отправили на него ссылку для восстановления. Проверьте почту.
-          </p>
+          <p className="text-sm text-gray-700">{t('auth.forgot.sent')}</p>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Email</label>
+              <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">{t('auth.email')}</label>
               <input
                 type="email"
                 value={email}
@@ -54,13 +56,13 @@ export default function ForgotPasswordPage() {
               disabled={loading}
               className="w-full px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300"
             >
-              {loading ? 'Отправляем...' : 'Отправить письмо'}
+              {loading ? t('auth.login.submitting') : t('auth.forgot.submit')}
             </button>
           </form>
         )}
 
         <p className="text-sm text-gray-600 mt-6 text-center">
-          <Link href="/login" className="text-gray-900 font-medium hover:underline">Вернуться ко входу</Link>
+          <Link href="/login" className="text-gray-900 font-medium hover:underline">{t('auth.signup.loginLink')}</Link>
         </p>
       </div>
     </div>

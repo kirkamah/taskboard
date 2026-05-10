@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Avatar from './Avatar';
 import { formatMention } from '@/lib/mentions';
+import { translate } from '@/lib/i18n';
 
 // Drop-in textarea wrapper that pops up a member picker when the user types
 // `@`. Selecting a member inserts `[@Display Name](uuid)` so the Markdown
@@ -16,7 +17,8 @@ import { formatMention } from '@/lib/mentions';
 
 const MENTION_TRIGGER = /(?:^|\s)(@[^\s@]*)$/u;
 
-export default function MentionInput({ value, onChange, members = [], profiles = {}, ...rest }) {
+export default function MentionInput({ value, onChange, members = [], profiles = {}, locale = 'ru', ...rest }) {
+  const t = (k, p) => translate(locale, k, p);
   const ref = useRef(null);
   const [popup, setPopup] = useState(null);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -44,7 +46,7 @@ export default function MentionInput({ value, onChange, members = [], profiles =
     : [];
 
   const insertAt = (mem) => {
-    const name = profiles[mem.user_id]?.display_name || 'Пользователь';
+    const name = profiles[mem.user_id]?.display_name || t('common.user');
     const before = (value || '').substring(0, popup.start);
     const after = (value || '').substring(popup.end);
     const insertion = formatMention(name, mem.user_id) + ' ';
@@ -95,7 +97,7 @@ export default function MentionInput({ value, onChange, members = [], profiles =
               className={`w-full text-left px-3 py-1.5 flex items-center gap-2 ${idx === activeIdx ? 'bg-gray-100' : 'hover:bg-gray-50'}`}
             >
               <Avatar profile={profiles[mem.user_id] || null} />
-              <span className="text-sm text-gray-900">{name || 'Пользователь'}</span>
+              <span className="text-sm text-gray-900">{name || t('common.user')}</span>
             </button>
           ))}
         </div>

@@ -18,6 +18,16 @@ import SubtasksList from './SubtasksList';
 import PomodoroTimer from './PomodoroTimer';
 import { extractMentions, newMentions } from '@/lib/mentions';
 import { translate } from '@/lib/i18n';
+
+function requestPlural(n, locale) {
+  if (locale === 'en') return n === 1 ? 'request' : 'requests';
+  const tens = Math.floor((n % 100) / 10);
+  const last = n % 10;
+  if (tens === 1) return 'запросов';
+  if (last === 1) return 'запрос';
+  if (last >= 2 && last <= 4) return 'запроса';
+  return 'запросов';
+}
 import { DEFAULT_FILTERS, loadFilters, saveFilters, applyFilters, hasActiveFilters } from '@/lib/taskFilters';
 
 /**
@@ -303,7 +313,7 @@ export default function BoardBody({
   };
 
   const deleteTemplate = async (id) => {
-    if (!window.confirm('Удалить шаблон?')) return;
+    if (!window.confirm(t('task.modal.deleteTemplateConfirm'))) return;
     await supabase.from('task_templates').delete().eq('id', id);
     await loadTemplates();
   };
@@ -529,7 +539,7 @@ export default function BoardBody({
 
   const bulkDelete = async () => {
     if (selectedIds.size === 0) return;
-    if (!window.confirm(`Удалить ${selectedIds.size} задач безвозвратно?`)) return;
+    if (!window.confirm(t('board.bulk.confirmDelete', { n: selectedIds.size }))) return;
     const ids = Array.from(selectedIds);
     setTasks((prev) => prev.filter(t => !selectedIds.has(t.id)));
     exitSelectionMode();
@@ -569,14 +579,14 @@ export default function BoardBody({
       });
       setRequestSubmitting(false);
       if (error) {
-        alert('Не удалось выполнить: ' + error.message);
+        alert(t('board.alert.failed') + error.message);
         return;
       }
     } else {
       const { error } = await supabase.from('tasks').update({ done: true }).eq('id', requestModal.taskId);
       setRequestSubmitting(false);
       if (error) {
-        alert('Не удалось выполнить: ' + error.message);
+        alert(t('board.alert.failed') + error.message);
         return;
       }
     }
@@ -596,7 +606,7 @@ export default function BoardBody({
     });
     setRequestSubmitting(false);
     if (error) {
-      alert('Не удалось отправить запрос: ' + error.message);
+      alert(t('board.alert.failedRequest') + error.message);
       return;
     }
     setRequestModal(null);
@@ -612,7 +622,7 @@ export default function BoardBody({
     if (!myRequest) return;
     const { error } = await supabase.rpc('withdraw_completion_request', { _request_id: myRequest.id });
     if (error) {
-      alert('Не удалось отозвать: ' + error.message);
+      alert(t('board.alert.failedWithdraw') + error.message);
       return;
     }
     await loadTasks();
@@ -629,7 +639,7 @@ export default function BoardBody({
     });
     setRequestSubmitting(false);
     if (error) {
-      alert('Не удалось ответить: ' + error.message);
+      alert(t('board.alert.failedRespond') + error.message);
       return;
     }
     setRequestModal(null);
@@ -640,12 +650,13 @@ export default function BoardBody({
 
   // Формат даты для отображения: "сегодня, 14:30" / "завтра, 09:00" / "15 мая, 14:30"
   const pluralDays = (n) => {
+    if (locale === 'en') return n === 1 ? t('days.singular') : t('days.many');
     const tens = Math.floor((n % 100) / 10);
     const last = n % 10;
-    if (tens === 1) return 'дней';
-    if (last === 1) return 'день';
-    if (last >= 2 && last <= 4) return 'дня';
-    return 'дней';
+    if (tens === 1) return t('days.many');
+    if (last === 1) return t('days.singular');
+    if (last >= 2 && last <= 4) return t('days.few');
+    return t('days.many');
   };
 
   const formatDue = (iso) => {
@@ -657,17 +668,17 @@ export default function BoardBody({
     const tomorrow = new Date(now);
     tomorrow.setDate(now.getDate() + 1);
     const sameTomorrow = d.toDateString() === tomorrow.toDateString();
-    const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-    // Overdue and not from today: explicit relative label.
+    const localeTag = locale === 'en' ? 'en-US' : 'ru-RU';
+    const time = d.toLocaleTimeString(localeTag, { hour: '2-digit', minute: '2-digit' });
     if (diffMs < 0 && !sameDay) {
       const days = Math.floor(-diffMs / (24 * 60 * 60 * 1000));
-      if (days <= 0) return `Просрочено, ${time}`;
-      if (days === 1) return 'Просрочено · вчера';
-      return `Просрочено · ${days} ${pluralDays(days)}`;
+      if (days <= 0) return t('due.overdueAt', { time });
+      if (days === 1) return t('due.overdueRel.yesterday');
+      return t('due.overdueRel.days', { n: days, plural: pluralDays(days) });
     }
-    if (sameDay) return diffMs < 0 ? `Сегодня, ${time} (просрочено)` : `Сегодня, ${time}`;
-    if (sameTomorrow) return `Завтра, ${time}`;
-    const date = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    if (sameDay) return diffMs < 0 ? t('due.todayOverdue', { time }) : t('due.todayAt', { time });
+    if (sameTomorrow) return t('due.tomorrowAt', { time });
+    const date = d.toLocaleDateString(localeTag, { day: 'numeric', month: 'short' });
     return `${date}, ${time}`;
   };
 
@@ -681,12 +692,13 @@ export default function BoardBody({
     return 'text-gray-600 bg-gray-50 border-gray-200';
   };
 
-  const getName = (uid) => profiles[uid]?.display_name || 'Пользователь';
+  const fallbackName = locale === 'en' ? 'User' : 'Пользователь';
+  const getName = (uid) => profiles[uid]?.display_name || fallbackName;
   const getProfile = (uid) => profiles[uid] || null;
   const getTaskTags = (task) => (task.tagIds || []).map((id) => tagsById[id]).filter(Boolean);
 
   if (loading) {
-    return <p className="text-sm text-gray-500 text-center py-8">Загрузка задач...</p>;
+    return <p className="text-sm text-gray-500 text-center py-8">{t('task.loading')}</p>;
   }
 
   return (
@@ -699,6 +711,7 @@ export default function BoardBody({
         profiles={profiles}
         tags={tags}
         userId={userId}
+        locale={locale}
       />
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="text-sm text-gray-500">
@@ -728,7 +741,7 @@ export default function BoardBody({
               onClick={() => { if (selectionMode) exitSelectionMode(); else setSelectionMode(true); }}
               className={`px-3 py-1.5 text-sm border rounded-lg ${selectionMode ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'}`}
             >
-              {selectionMode ? 'Выйти из выделения' : 'Выделить'}
+              {selectionMode ? t('board.toolbar.exitSelect') : t('board.toolbar.select')}
             </button>
           )}
           {canCreateTask && templates.length > 0 && (
@@ -736,29 +749,29 @@ export default function BoardBody({
               <button
                 onClick={() => setShowTemplatePicker((v) => !v)}
                 className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-100"
-                title="Создать задачу из шаблона"
+                title={t('board.fromTemplate.title')}
               >
-                Из шаблона
+                {t('board.toolbar.fromTemplate')}
               </button>
               {showTemplatePicker && (
                 <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-30 max-h-80 overflow-auto">
                   {templates.length === 0 ? (
-                    <p className="text-xs text-gray-400 px-3 py-2">Шаблонов пока нет.</p>
+                    <p className="text-xs text-gray-400 px-3 py-2">{t('board.fromTemplate.empty')}</p>
                   ) : (
                     <div className="py-1">
-                      {templates.map((t) => (
-                        <div key={t.id} className="flex items-center gap-1 px-1">
+                      {templates.map((tpl) => (
+                        <div key={tpl.id} className="flex items-center gap-1 px-1">
                           <button
-                            onClick={() => applyTemplate(t)}
+                            onClick={() => applyTemplate(tpl)}
                             className="flex-1 text-left px-2 py-1.5 hover:bg-gray-50 rounded text-sm min-w-0"
                           >
-                            <div className="font-medium text-gray-900 truncate">{t.name}</div>
-                            <div className="text-xs text-gray-500 truncate">{t.title}</div>
+                            <div className="font-medium text-gray-900 truncate">{tpl.name}</div>
+                            <div className="text-xs text-gray-500 truncate">{tpl.title}</div>
                           </button>
                           <button
-                            onClick={() => deleteTemplate(t.id)}
+                            onClick={() => deleteTemplate(tpl.id)}
                             className="text-gray-400 hover:text-red-600 p-1"
-                            title="Удалить шаблон"
+                            title={t('board.fromTemplate.delete')}
                           >
                             <Trash2 size={12} />
                           </button>
@@ -772,7 +785,7 @@ export default function BoardBody({
           )}
           {canCreateTask && (
             <button onClick={openAdd} className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 flex items-center gap-2">
-              <Plus size={16} /> Добавить задачу
+              <Plus size={16} /> {t('board.toolbar.add')}
             </button>
           )}
         </div>
@@ -780,22 +793,22 @@ export default function BoardBody({
 
       {selectionMode && (
         <div className="mb-3 flex items-center gap-2 flex-wrap bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-          <span className="text-sm text-gray-700">Выбрано: <strong>{selectedIds.size}</strong></span>
+          <span className="text-sm text-gray-700">{t('board.bulk.selected')}: <strong>{selectedIds.size}</strong></span>
           {canEditTask && (
             <div className="inline-flex border border-gray-300 rounded-md overflow-hidden text-xs bg-white">
-              <button onClick={() => bulkMoveToQuadrant(true, true)} disabled={selectedIds.size === 0} className="px-2 py-1 hover:bg-gray-100 disabled:opacity-50">→ Важно/срочно</button>
-              <button onClick={() => bulkMoveToQuadrant(true, false)} disabled={selectedIds.size === 0} className="px-2 py-1 border-l border-gray-300 hover:bg-gray-100 disabled:opacity-50">→ Важно</button>
-              <button onClick={() => bulkMoveToQuadrant(false, true)} disabled={selectedIds.size === 0} className="px-2 py-1 border-l border-gray-300 hover:bg-gray-100 disabled:opacity-50">→ Срочно</button>
-              <button onClick={() => bulkMoveToQuadrant(false, false)} disabled={selectedIds.size === 0} className="px-2 py-1 border-l border-gray-300 hover:bg-gray-100 disabled:opacity-50">→ Не важно/не срочно</button>
+              <button onClick={() => bulkMoveToQuadrant(true, true)} disabled={selectedIds.size === 0} className="px-2 py-1 hover:bg-gray-100 disabled:opacity-50">{t('board.bulk.toQuadrantImpUrg')}</button>
+              <button onClick={() => bulkMoveToQuadrant(true, false)} disabled={selectedIds.size === 0} className="px-2 py-1 border-l border-gray-300 hover:bg-gray-100 disabled:opacity-50">{t('board.bulk.toQuadrantImp')}</button>
+              <button onClick={() => bulkMoveToQuadrant(false, true)} disabled={selectedIds.size === 0} className="px-2 py-1 border-l border-gray-300 hover:bg-gray-100 disabled:opacity-50">{t('board.bulk.toQuadrantUrg')}</button>
+              <button onClick={() => bulkMoveToQuadrant(false, false)} disabled={selectedIds.size === 0} className="px-2 py-1 border-l border-gray-300 hover:bg-gray-100 disabled:opacity-50">{t('board.bulk.toQuadrantDrop')}</button>
             </div>
           )}
           {canEditTask && (
-            <button onClick={bulkArchive} disabled={selectedIds.size === 0} className="px-2.5 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-100 disabled:opacity-50">В архив</button>
+            <button onClick={bulkArchive} disabled={selectedIds.size === 0} className="px-2.5 py-1 text-xs border border-gray-300 rounded-md bg-white hover:bg-gray-100 disabled:opacity-50">{t('board.bulk.archive')}</button>
           )}
           {canDeleteTask && (
-            <button onClick={bulkDelete} disabled={selectedIds.size === 0} className="px-2.5 py-1 text-xs border border-red-300 text-red-700 rounded-md bg-white hover:bg-red-50 disabled:opacity-50">Удалить</button>
+            <button onClick={bulkDelete} disabled={selectedIds.size === 0} className="px-2.5 py-1 text-xs border border-red-300 text-red-700 rounded-md bg-white hover:bg-red-50 disabled:opacity-50">{t('board.bulk.delete')}</button>
           )}
-          <button onClick={exitSelectionMode} className="ml-auto text-xs text-gray-500 hover:text-gray-900 underline underline-offset-2">Отменить</button>
+          <button onClick={exitSelectionMode} className="ml-auto text-xs text-gray-500 hover:text-gray-900 underline underline-offset-2">{t('board.bulk.cancel')}</button>
         </div>
       )}
 
@@ -823,7 +836,7 @@ export default function BoardBody({
                 <span className="text-xs text-gray-400">{qTasks.length}</span>
               </div>
               <div className="space-y-2">
-                {qTasks.length === 0 && <p className="text-xs text-gray-400 text-center py-6">Пусто</p>}
+                {qTasks.length === 0 && <p className="text-xs text-gray-400 text-center py-6">{t('common.empty')}</p>}
                 {qTasks.map(task => {
                   const dueClasses = getDueClasses(task.due_at, task.done);
                   const isDragging = draggingTaskId === task.id;
@@ -894,7 +907,7 @@ export default function BoardBody({
                           const { total, done } = subtaskAgg[task.id];
                           const complete = total > 0 && done === total;
                           return (
-                            <div className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded ${complete ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200 bg-gray-50 text-gray-600'}`} title="Подзадачи">
+                            <div className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded ${complete ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200 bg-gray-50 text-gray-600'}`} title={t('subtasks.heading')}>
                               <ListTree size={10} /> {done}/{total}
                             </div>
                           );
@@ -907,14 +920,14 @@ export default function BoardBody({
                         {task.created_by_api_key_id && (
                           <div
                             className="inline-flex items-center gap-1 text-xs px-2 py-0.5 border border-purple-200 bg-purple-50 text-purple-700 rounded"
-                            title="Создано внешним ИИ через API"
+                            title={t('task.aiCreatedTitle')}
                           >
-                            <Bot size={10} /> Создано ИИ
+                            <Bot size={10} /> {t('task.aiCreated')}
                           </div>
                         )}
                         {isRoom && canApproveRequests && (task.pendingRequests || []).length > 0 && (
                           <div className="inline-flex items-center gap-1 text-xs px-2 py-0.5 border border-blue-200 bg-blue-50 text-blue-700 rounded">
-                            <MessageSquare size={10} /> {task.pendingRequests.length} {task.pendingRequests.length === 1 ? 'запрос' : 'запросов'}
+                            <MessageSquare size={10} /> {task.pendingRequests.length} {requestPlural(task.pendingRequests.length, locale)}
                           </div>
                         )}
                       </div>
@@ -929,9 +942,9 @@ export default function BoardBody({
 
       {bottomView === 'completed' && (
         <div className="mt-6 bg-white border border-gray-200 rounded-lg p-4">
-          <h2 className="font-semibold text-gray-900 mb-3">Выполненные</h2>
+          <h2 className="font-semibold text-gray-900 mb-3">{t('board.completedSection')}</h2>
           {completedTasks.length === 0 ? (
-            <p className="text-xs text-gray-400">Пока ничего не выполнено.</p>
+            <p className="text-xs text-gray-400">{t('board.completedEmpty')}</p>
           ) : (
             <div className="space-y-2">
               {completedTasks.map(task => (
@@ -940,13 +953,13 @@ export default function BoardBody({
                   {(canEditTask || canDeleteTask) && (
                     <div className="flex gap-2">
                       {canEditTask && (
-                        <button onClick={() => toggleDone(task)} className="text-xs text-gray-600 hover:text-gray-900">Вернуть</button>
+                        <button onClick={() => toggleDone(task)} className="text-xs text-gray-600 hover:text-gray-900">{t('board.actions.return')}</button>
                       )}
                       {canEditTask && (
-                        <button onClick={() => archiveTask(task.id)} className="text-xs text-gray-600 hover:text-gray-900">В архив</button>
+                        <button onClick={() => archiveTask(task.id)} className="text-xs text-gray-600 hover:text-gray-900">{t('board.actions.archive')}</button>
                       )}
                       {canDeleteTask && (
-                        <button onClick={() => del(task.id)} className="text-xs text-red-600 hover:text-red-800">Удалить</button>
+                        <button onClick={() => del(task.id)} className="text-xs text-red-600 hover:text-red-800">{t('board.actions.delete')}</button>
                       )}
                     </div>
                   )}
@@ -959,9 +972,9 @@ export default function BoardBody({
 
       {bottomView === 'archive' && (
         <div className="mt-6 bg-white border border-gray-200 rounded-lg p-4">
-          <h2 className="font-semibold text-gray-900 mb-3">Архив</h2>
+          <h2 className="font-semibold text-gray-900 mb-3">{t('board.archiveSection')}</h2>
           {archivedTasks.length === 0 ? (
-            <p className="text-xs text-gray-400">Архив пуст.</p>
+            <p className="text-xs text-gray-400">{t('board.archiveEmpty')}</p>
           ) : (
             <div className="space-y-2">
               {archivedTasks.map(task => (
@@ -970,10 +983,10 @@ export default function BoardBody({
                   {(canEditTask || canDeleteTask) && (
                     <div className="flex gap-2">
                       {canEditTask && (
-                        <button onClick={() => restoreFromArchive(task.id)} className="text-xs text-gray-600 hover:text-gray-900">Восстановить</button>
+                        <button onClick={() => restoreFromArchive(task.id)} className="text-xs text-gray-600 hover:text-gray-900">{t('board.actions.restore')}</button>
                       )}
                       {canDeleteTask && (
-                        <button onClick={() => del(task.id)} className="text-xs text-red-600 hover:text-red-800">Удалить</button>
+                        <button onClick={() => del(task.id)} className="text-xs text-red-600 hover:text-red-800">{t('board.actions.delete')}</button>
                       )}
                     </div>
                   )}
@@ -990,8 +1003,8 @@ export default function BoardBody({
             <div className="flex-1 pr-4">
               <h2 className="text-xl font-semibold text-gray-900">{selectedTask.title}</h2>
               <div className="flex gap-2 mt-2 flex-wrap">
-                <span className="text-xs px-2 py-1 border border-gray-300 rounded">{selectedTask.important ? 'Важно' : 'Не важно'}</span>
-                <span className="text-xs px-2 py-1 border border-gray-300 rounded">{selectedTask.urgent ? 'Срочно' : 'Не срочно'}</span>
+                <span className="text-xs px-2 py-1 border border-gray-300 rounded">{selectedTask.important ? t('task.flag.important') : t('task.flag.notImportant')}</span>
+                <span className="text-xs px-2 py-1 border border-gray-300 rounded">{selectedTask.urgent ? t('task.flag.urgent') : t('task.flag.notUrgent')}</span>
                 {selectedTask.due_at && (
                   <span className={`text-xs px-2 py-1 border rounded inline-flex items-center gap-1 ${getDueClasses(selectedTask.due_at, selectedTask.done)}`}>
                     <Calendar size={11} /> {formatDue(selectedTask.due_at)}
@@ -1004,11 +1017,11 @@ export default function BoardBody({
           <div className="p-6">
             {selectedTask.description
               ? <Markdown text={selectedTask.description} className="text-gray-700" />
-              : <p className="text-sm text-gray-400">Описание не указано</p>}
+              : <p className="text-sm text-gray-400">{t('task.descriptionEmpty')}</p>}
             {getTaskTags(selectedTask).length > 0 && (
               <div className="mt-4 pt-4 border-t border-gray-100">
                 <p className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
-                  <TagIcon size={12} /> Теги
+                  <TagIcon size={12} /> {t('task.field.tags')}
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {getTaskTags(selectedTask).map((tag) => (
@@ -1025,7 +1038,7 @@ export default function BoardBody({
                   return (
                     <>
                       <p className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
-                        <ListChecks size={12} /> Чеклист · {done}/{items.length}
+                        <ListChecks size={12} /> {t('task.field.checklist')} · {done}/{items.length}
                       </p>
                       <div className="space-y-1.5">
                         {items.map((it) => (
@@ -1053,7 +1066,7 @@ export default function BoardBody({
             )}
             {isRoom && (selectedTask.assignees || []).length > 0 && (
               <div className="mt-4 pt-4 border-t border-gray-100">
-                <p className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Назначены</p>
+                <p className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">{t('task.assignedSection')}</p>
                 <div className="flex flex-wrap gap-2">
                   {selectedTask.assignees.map((uid) => (
                     <div key={uid} className="flex items-center gap-2 border border-gray-200 rounded-full pl-1 pr-3 py-0.5">
@@ -1068,11 +1081,13 @@ export default function BoardBody({
               taskId={selectedTask.id}
               initialSpentMinutes={selectedTask.time_spent_minutes || 0}
               canEdit={canEditTask || canCreateTask || isPersonal}
+              locale={locale}
             />
             <SubtasksList
               parent={selectedTask}
               userId={userId}
               canEdit={canEditTask || canCreateTask}
+              locale={locale}
               onOpen={async (subId) => {
                 const { data } = await supabase
                   .from('tasks')
@@ -1098,6 +1113,7 @@ export default function BoardBody({
               userId={userId}
               profiles={profiles}
               canModerate={isRoomOwner}
+              locale={locale}
             />
             <TaskComments
               taskId={selectedTask.id}
@@ -1107,17 +1123,19 @@ export default function BoardBody({
               canModerate={isRoomOwner}
               members={isRoom ? members : []}
               roomId={isRoom ? roomId : null}
+              locale={locale}
             />
             <TaskHistory
               taskId={selectedTask.id}
               profiles={profiles}
               tagsById={tagsById}
+              locale={locale}
             />
             {/* Для участников с approve_completion_requests: список активных запросов */}
             {isRoom && canApproveRequests && (selectedTask.pendingRequests || []).length > 0 && (
               <div className="mt-4 pt-4 border-t border-gray-100">
                 <p className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
-                  <MessageSquare size={12} /> Запросы на выполнение
+                  <MessageSquare size={12} /> {t('task.section.completionRequests')}
                 </p>
                 <div className="space-y-2">
                   {selectedTask.pendingRequests.map((req) => (
@@ -1141,13 +1159,13 @@ export default function BoardBody({
                           onClick={() => { setRequestModal({ mode: 'respond', requestId: req.id, action: 'approve' }); setRequestNote(''); }}
                           className="flex-1 px-3 py-1.5 text-xs bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center gap-1"
                         >
-                          <Check size={12} /> Одобрить
+                          <Check size={12} /> {t('task.modal.approve')}
                         </button>
                         <button
                           onClick={() => { setRequestModal({ mode: 'respond', requestId: req.id, action: 'reject' }); setRequestNote(''); }}
                           className="flex-1 px-3 py-1.5 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50 flex items-center justify-center gap-1"
                         >
-                          <X size={12} /> Отклонить
+                          <X size={12} /> {t('task.modal.reject')}
                         </button>
                       </div>
                     </div>
@@ -1174,15 +1192,15 @@ export default function BoardBody({
                   }}
                   className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 flex items-center gap-2"
                 >
-                  <Check size={16} /> Выполнено
+                  <Check size={16} /> {t('task.modal.complete')}
                 </button>
               )}
               <div className="flex gap-2 ml-auto">
                 {canEditTask && (
-                  <button onClick={() => openEdit(selectedTask)} className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 flex items-center gap-2"><Edit2 size={14} /> Редактировать</button>
+                  <button onClick={() => openEdit(selectedTask)} className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 flex items-center gap-2"><Edit2 size={14} /> {t('task.modal.edit')}</button>
                 )}
                 {canDeleteTask && (
-                  <button onClick={() => del(selectedTask.id)} className="px-3 py-2 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50 flex items-center gap-2"><Trash2 size={14} /> Удалить</button>
+                  <button onClick={() => del(selectedTask.id)} className="px-3 py-2 text-sm border border-red-300 text-red-600 rounded-lg hover:bg-red-50 flex items-center gap-2"><Trash2 size={14} /> {t('task.modal.delete')}</button>
                 )}
               </div>
             </div>
@@ -1196,13 +1214,13 @@ export default function BoardBody({
                     return (
                       <div className="flex items-center justify-between gap-3 flex-wrap">
                         <p className="text-sm text-gray-700">
-                          Ваш запрос на выполнение отправлен
+                          {t('task.myRequestSent')}
                         </p>
                         <button
                           onClick={() => withdrawMyRequest(selectedTask.id)}
                           className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-700"
                         >
-                          Отозвать
+                          {t('task.withdrawRequest')}
                         </button>
                       </div>
                     );
@@ -1212,7 +1230,7 @@ export default function BoardBody({
                       onClick={() => { setRequestModal({ mode: 'create', taskId: selectedTask.id }); setRequestNote(''); }}
                       className="w-full px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 flex items-center justify-center gap-2"
                     >
-                      <Send size={14} /> Запросить выполнение
+                      <Send size={14} /> {t('task.modal.requestComplete')}
                     </button>
                   );
                 })()}
@@ -1225,51 +1243,52 @@ export default function BoardBody({
       {showAddModal && (
         <Modal onClose={() => setShowAddModal(false)}>
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
-            <h2 className="text-lg font-semibold">{editingTask ? 'Редактировать задачу' : 'Новая задача'}</h2>
+            <h2 className="text-lg font-semibold">{editingTask ? t('task.modal.editTitle') : t('task.modal.newTitle')}</h2>
             <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
           </div>
           <div className="p-6 space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Название</label>
+              <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">{t('task.field.title')}</label>
               <input
                 type="text"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="Что нужно сделать?"
+                placeholder={t('task.field.titlePlaceholder')}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900"
                 autoFocus
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Описание</label>
+              <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">{t('task.field.description')}</label>
               <MentionInput
                 value={formData.description}
                 onChange={(v) => setFormData({ ...formData, description: v })}
                 members={isRoom ? members : []}
                 profiles={profiles}
-                placeholder={isRoom ? 'Подробности, контекст, ссылки… (@ — упомянуть)' : 'Подробности, контекст, ссылки…'}
+                locale={locale}
+                placeholder={isRoom ? t('task.field.descriptionPlaceholder.room') : t('task.field.descriptionPlaceholder.personal')}
                 rows={4}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 resize-none"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Важность</label>
+                <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">{t('task.field.importance')}</label>
                 <div className="flex gap-2">
-                  <Toggle active={formData.important} onClick={() => setFormData({ ...formData, important: true })}>Важно</Toggle>
-                  <Toggle active={!formData.important} onClick={() => setFormData({ ...formData, important: false })}>Не важно</Toggle>
+                  <Toggle active={formData.important} onClick={() => setFormData({ ...formData, important: true })}>{t('task.flag.important')}</Toggle>
+                  <Toggle active={!formData.important} onClick={() => setFormData({ ...formData, important: false })}>{t('task.flag.notImportant')}</Toggle>
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Срочность</label>
+                <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">{t('task.field.urgency')}</label>
                 <div className="flex gap-2">
-                  <Toggle active={formData.urgent} onClick={() => setFormData({ ...formData, urgent: true })}>Срочно</Toggle>
-                  <Toggle active={!formData.urgent} onClick={() => setFormData({ ...formData, urgent: false })}>Не срочно</Toggle>
+                  <Toggle active={formData.urgent} onClick={() => setFormData({ ...formData, urgent: true })}>{t('task.flag.urgent')}</Toggle>
+                  <Toggle active={!formData.urgent} onClick={() => setFormData({ ...formData, urgent: false })}>{t('task.flag.notUrgent')}</Toggle>
                 </div>
               </div>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Срок выполнения (необязательно)</label>
+              <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">{t('task.field.due.optional')}</label>
               <div className="flex gap-2">
                 <input
                   type="datetime-local"
@@ -1282,9 +1301,9 @@ export default function BoardBody({
                     type="button"
                     onClick={() => setFormData({ ...formData, due_at: '' })}
                     className="px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-600"
-                    title="Убрать срок"
+                    title={t('task.field.due.clear')}
                   >
-                    Очистить
+                    {t('common.clear')}
                   </button>
                 )}
               </div>
@@ -1292,7 +1311,7 @@ export default function BoardBody({
             {(editingTask ? canEditTask : canCreateTask) && tags.length > 0 && (
               <div>
                 <label className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
-                  <TagIcon size={12} /> Теги (необязательно)
+                  <TagIcon size={12} /> {t('task.field.tags.optional')}
                 </label>
                 <div className="flex flex-wrap gap-1.5">
                   {tags.map((t) => {
@@ -1322,7 +1341,7 @@ export default function BoardBody({
             {(editingTask ? canEditChecklist : canCreateTask) && (
               <div>
                 <label className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
-                  <ListChecks size={12} /> Чеклист (необязательно · до {MAX_CHECKLIST_ITEMS} пунктов)
+                  <ListChecks size={12} /> {t('task.checklist.optional', { n: MAX_CHECKLIST_ITEMS })}
                 </label>
                 {formData.checklist.length === 0 ? (
                   <button
@@ -1330,7 +1349,7 @@ export default function BoardBody({
                     onClick={() => setFormData({ ...formData, checklist: [{ text: '', done: false }] })}
                     className="w-full px-3 py-2 text-sm border border-dashed border-gray-300 rounded-lg hover:bg-gray-50 text-gray-600 flex items-center justify-center gap-2"
                   >
-                    <Plus size={14} /> Включить чеклист
+                    <Plus size={14} /> {t('task.checklist.enable')}
                   </button>
                 ) : (
                   <div className="space-y-2">
@@ -1349,7 +1368,7 @@ export default function BoardBody({
                         <input
                           type="text"
                           value={it.text}
-                          placeholder={`Пункт ${idx + 1}`}
+                          placeholder={t('task.checklist.itemPlaceholder', { n: idx + 1 })}
                           maxLength={200}
                           onChange={(e) => {
                             const next = [...formData.checklist];
@@ -1365,7 +1384,7 @@ export default function BoardBody({
                             setFormData({ ...formData, checklist: next });
                           }}
                           className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded flex-shrink-0"
-                          aria-label="Удалить пункт"
+                          aria-label={t('task.checklist.removeItem')}
                         >
                           <X size={14} />
                         </button>
@@ -1377,8 +1396,8 @@ export default function BoardBody({
                       disabled={formData.checklist.length >= MAX_CHECKLIST_ITEMS}
                       className="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                     >
-                      <Plus size={12} /> Добавить пункт
-                      {formData.checklist.length >= MAX_CHECKLIST_ITEMS && ` (максимум ${MAX_CHECKLIST_ITEMS})`}
+                      <Plus size={12} /> {t('task.checklist.addItem')}
+                      {formData.checklist.length >= MAX_CHECKLIST_ITEMS && ` ${t('task.checklist.maxNote', { n: MAX_CHECKLIST_ITEMS })}`}
                     </button>
                   </div>
                 )}
@@ -1387,7 +1406,7 @@ export default function BoardBody({
             {canAssign && members.length > 0 && (
               <div>
                 <label className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
-                  <UserPlus size={12} /> Назначить участников (необязательно)
+                  <UserPlus size={12} /> {t('task.assignees.optional')}
                 </label>
                 <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto">
                   {members.map((m) => {
@@ -1412,14 +1431,14 @@ export default function BoardBody({
                         <Avatar profile={getProfile(m.user_id)} />
                         <span className="text-sm text-gray-800 flex-1">{name}</span>
                         {m.role === 'owner' && (
-                          <span className="text-xs text-amber-700">Владелец</span>
+                          <span className="text-xs text-amber-700">{t('task.assignees.owner')}</span>
                         )}
                       </label>
                     );
                   })}
                 </div>
                 {formData.assignees.length > 0 && (
-                  <p className="text-xs text-gray-500 mt-2">Выбрано: {formData.assignees.length}</p>
+                  <p className="text-xs text-gray-500 mt-2">{t('task.assignees.selected')}: {formData.assignees.length}</p>
                 )}
               </div>
             )}
@@ -1433,11 +1452,11 @@ export default function BoardBody({
                   value={savingTemplateName}
                   onChange={(e) => setSavingTemplateName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') saveAsTemplate(savingTemplateName); if (e.key === 'Escape') setSavingTemplateName(null); }}
-                  placeholder="Название шаблона"
+                  placeholder={t('task.modal.templateName')}
                   className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900"
                 />
-                <button onClick={() => saveAsTemplate(savingTemplateName)} disabled={!(savingTemplateName || '').trim()} className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-100 disabled:opacity-50">Сохранить</button>
-                <button onClick={() => setSavingTemplateName(null)} className="text-xs text-gray-500 hover:text-gray-900">Отмена</button>
+                <button onClick={() => saveAsTemplate(savingTemplateName)} disabled={!(savingTemplateName || '').trim()} className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-100 disabled:opacity-50">{t('common.save')}</button>
+                <button onClick={() => setSavingTemplateName(null)} className="text-xs text-gray-500 hover:text-gray-900">{t('common.cancel')}</button>
               </div>
             ) : (
               <>
@@ -1445,13 +1464,13 @@ export default function BoardBody({
                   onClick={() => setSavingTemplateName(formData.title || '')}
                   disabled={!formData.title.trim()}
                   className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50"
-                  title="Сохранить текущие поля как шаблон"
+                  title={t('task.template.saveTitle')}
                 >
-                  Как шаблон
+                  {t('task.modal.saveAsTemplate')}
                 </button>
                 <div className="flex-1" />
-                <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100">Отмена</button>
-                <button onClick={save} disabled={!formData.title.trim()} className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300">{editingTask ? 'Сохранить' : 'Создать'}</button>
+                <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100">{t('common.cancel')}</button>
+                <button onClick={save} disabled={!formData.title.trim()} className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300">{editingTask ? t('task.modal.update') : t('task.modal.create')}</button>
               </>
             )}
           </div>
@@ -1463,31 +1482,31 @@ export default function BoardBody({
         <Modal onClose={() => { setRequestModal(null); setRequestNote(''); }}>
           <div className="flex items-center justify-between p-6 border-b border-gray-200">
             <h2 className="text-lg font-semibold">
-              {requestModal.mode === 'create' && 'Запросить выполнение'}
-              {requestModal.mode === 'editor_complete' && 'Отметить задачу выполненной'}
-              {requestModal.mode === 'respond' && requestModal.action === 'approve' && 'Одобрить запрос'}
-              {requestModal.mode === 'respond' && requestModal.action === 'reject' && 'Отклонить запрос'}
+              {requestModal.mode === 'create' && t('task.requestHeader.create')}
+              {requestModal.mode === 'editor_complete' && t('task.requestHeader.editorComplete')}
+              {requestModal.mode === 'respond' && requestModal.action === 'approve' && t('task.requestHeader.approve')}
+              {requestModal.mode === 'respond' && requestModal.action === 'reject' && t('task.requestHeader.reject')}
             </h2>
             <button onClick={() => { setRequestModal(null); setRequestNote(''); }} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
           </div>
           <div className="p-6 space-y-3">
             <p className="text-sm text-gray-600">
-              {requestModal.mode === 'create' && 'Владелец и помощники комнаты получат уведомление. Опишите, что сделано — это обязательно.'}
-              {requestModal.mode === 'editor_complete' && 'Задача будет отмечена выполненной, владелец получит уведомление. Можете добавить комментарий (необязательно).'}
-              {requestModal.mode === 'respond' && requestModal.action === 'approve' && 'Задача будет отмечена выполненной. Отправитель получит уведомление.'}
-              {requestModal.mode === 'respond' && requestModal.action === 'reject' && 'Запрос будет отклонён. Отправитель получит уведомление.'}
+              {requestModal.mode === 'create' && t('task.requestSub.create')}
+              {requestModal.mode === 'editor_complete' && t('task.requestSub.editorComplete')}
+              {requestModal.mode === 'respond' && requestModal.action === 'approve' && t('task.requestSub.approve')}
+              {requestModal.mode === 'respond' && requestModal.action === 'reject' && t('task.requestSub.reject')}
             </p>
             <div>
               <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">
-                {requestModal.mode === 'create' ? (<>Комментарий <span className="text-red-500 normal-case">*</span></>) : 'Комментарий (необязательно)'}
+                {requestModal.mode === 'create' ? (<>{t('task.note.required')} <span className="text-red-500 normal-case">{t('task.note.requiredMark')}</span></>) : t('task.note.optional')}
               </label>
               <textarea
                 value={requestNote}
                 onChange={(e) => setRequestNote(e.target.value)}
                 placeholder={
-                  requestModal.mode === 'create' ? 'Например: всё готово, прошу проверить'
-                  : requestModal.mode === 'editor_complete' ? 'Например: сделано, отчёт прикреплён'
-                  : 'Коротко опишите причину или благодарите'
+                  requestModal.mode === 'create' ? t('task.note.placeholder.create')
+                  : requestModal.mode === 'editor_complete' ? t('task.note.placeholder.editorComplete')
+                  : t('task.note.placeholder.respond')
                 }
                 rows={4}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900 resize-none text-sm"
@@ -1501,7 +1520,7 @@ export default function BoardBody({
               className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
               disabled={requestSubmitting}
             >
-              Отмена
+              {t('common.cancel')}
             </button>
             {requestModal.mode === 'create' ? (
               <button
@@ -1509,7 +1528,7 @@ export default function BoardBody({
                 disabled={requestSubmitting || !requestNote.trim()}
                 className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 flex items-center gap-2"
               >
-                <Send size={14} /> {requestSubmitting ? 'Отправляем...' : 'Отправить'}
+                <Send size={14} /> {requestSubmitting ? t('task.action.sending') : t('task.action.send')}
               </button>
             ) : requestModal.mode === 'editor_complete' ? (
               <button
@@ -1517,7 +1536,7 @@ export default function BoardBody({
                 disabled={requestSubmitting}
                 className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300 flex items-center gap-2"
               >
-                <Check size={14} /> {requestSubmitting ? 'Сохраняем...' : 'Выполнено'}
+                <Check size={14} /> {requestSubmitting ? t('task.action.completing') : t('task.modal.complete')}
               </button>
             ) : requestModal.action === 'approve' ? (
               <button
@@ -1525,7 +1544,7 @@ export default function BoardBody({
                 disabled={requestSubmitting}
                 className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 flex items-center gap-2"
               >
-                <Check size={14} /> {requestSubmitting ? 'Одобряем...' : 'Одобрить'}
+                <Check size={14} /> {requestSubmitting ? t('task.action.approving') : t('task.modal.approve')}
               </button>
             ) : (
               <button
@@ -1533,7 +1552,7 @@ export default function BoardBody({
                 disabled={requestSubmitting}
                 className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 flex items-center gap-2"
               >
-                <X size={14} /> {requestSubmitting ? 'Отклоняем...' : 'Отклонить'}
+                <X size={14} /> {requestSubmitting ? t('task.action.rejecting') : t('task.modal.reject')}
               </button>
             )}
           </div>

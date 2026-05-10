@@ -3,14 +3,17 @@
 import { useState } from 'react';
 import { Trash2, Plus, RefreshCw, Power, PowerOff, Copy, Check } from 'lucide-react';
 import { createWebhook, deleteWebhook, toggleWebhook, rotateWebhookSecret } from '@/app/profile/webhooks/actions';
+import { translate } from '@/lib/i18n';
 
-export default function WebhooksClient({ initialHooks }) {
+export default function WebhooksClient({ initialHooks, locale = 'ru' }) {
+  const t = (k, p) => translate(locale, k, p);
+  const localeTag = locale === 'en' ? 'en-US' : 'ru-RU';
   const [hooks, setHooks] = useState(initialHooks);
   const [url, setUrl] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
-  const [revealedSecrets, setRevealedSecrets] = useState({}); // id → bool
-  const [copied, setCopied] = useState({}); // id → bool
+  const [revealedSecrets, setRevealedSecrets] = useState({});
+  const [copied, setCopied] = useState({});
 
   const create = async () => {
     setError('');
@@ -23,7 +26,7 @@ export default function WebhooksClient({ initialHooks }) {
   };
 
   const remove = async (id) => {
-    if (!window.confirm('Удалить подписку? Доставка остановится.')) return;
+    if (!window.confirm(t('webhooks.confirm.delete'))) return;
     const res = await deleteWebhook(id);
     if (res.error) { setError(res.error); return; }
     setHooks((prev) => prev.filter((h) => h.id !== id));
@@ -36,7 +39,7 @@ export default function WebhooksClient({ initialHooks }) {
   };
 
   const rotate = async (id) => {
-    if (!window.confirm('Сгенерировать новый секрет? Старый перестанет работать сразу.')) return;
+    if (!window.confirm(t('webhooks.confirm.rotate'))) return;
     const res = await rotateWebhookSecret(id);
     if (res.error) { setError(res.error); return; }
     setHooks((prev) => prev.map((x) => x.id === id ? { ...x, secret: res.webhook.secret } : x));
@@ -52,13 +55,13 @@ export default function WebhooksClient({ initialHooks }) {
   return (
     <div>
       <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
-        <h2 className="font-semibold text-gray-900 mb-3 flex items-center gap-2"><Plus size={16} /> Добавить webhook</h2>
+        <h2 className="font-semibold text-gray-900 mb-3 flex items-center gap-2"><Plus size={16} /> {t('webhooks.addHeading')}</h2>
         <div className="flex gap-2">
           <input
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://example.com/webhook"
+            placeholder={t('webhooks.urlPlaceholder')}
             className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900"
           />
           <button
@@ -66,14 +69,14 @@ export default function WebhooksClient({ initialHooks }) {
             disabled={creating || !url.trim()}
             className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300"
           >
-            {creating ? '…' : 'Добавить'}
+            {creating ? '…' : t('webhooks.add')}
           </button>
         </div>
         {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
       </div>
 
       {hooks.length === 0 ? (
-        <p className="text-sm text-gray-500 text-center py-6">Подписок пока нет.</p>
+        <p className="text-sm text-gray-500 text-center py-6">{t('webhooks.empty')}</p>
       ) : (
         <div className="space-y-2">
           {hooks.map((h) => (
@@ -82,29 +85,29 @@ export default function WebhooksClient({ initialHooks }) {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-gray-900 truncate" title={h.url}>{h.url}</p>
                   <p className="text-xs text-gray-500 mt-1">
-                    Создан {new Date(h.created_at).toLocaleDateString('ru-RU')}
-                    {h.last_delivered_at && <> · последняя доставка {new Date(h.last_delivered_at).toLocaleString('ru-RU')}</>}
+                    {t('webhooks.created', { date: new Date(h.created_at).toLocaleDateString(localeTag) })}
+                    {h.last_delivered_at && <> · {t('webhooks.lastDelivery', { datetime: new Date(h.last_delivered_at).toLocaleString(localeTag) })}</>}
                   </p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <button
                     onClick={() => toggle(h)}
                     className={`p-1.5 rounded ${h.is_active ? 'text-green-700 hover:bg-green-50' : 'text-gray-400 hover:bg-gray-100'}`}
-                    title={h.is_active ? 'Активен — отключить' : 'Отключён — включить'}
+                    title={h.is_active ? t('webhooks.tooltip.activeOff') : t('webhooks.tooltip.activeOn')}
                   >
                     {h.is_active ? <Power size={14} /> : <PowerOff size={14} />}
                   </button>
                   <button
                     onClick={() => rotate(h.id)}
                     className="p-1.5 rounded text-gray-500 hover:bg-gray-100"
-                    title="Перевыпустить секрет"
+                    title={t('webhooks.tooltip.rotate')}
                   >
                     <RefreshCw size={14} />
                   </button>
                   <button
                     onClick={() => remove(h.id)}
                     className="p-1.5 rounded text-red-500 hover:bg-red-50"
-                    title="Удалить"
+                    title={t('webhooks.tooltip.delete')}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -115,7 +118,7 @@ export default function WebhooksClient({ initialHooks }) {
                   onClick={() => setRevealedSecrets((p) => ({ ...p, [h.id]: !p[h.id] }))}
                   className="text-gray-500 hover:text-gray-900 mr-2"
                 >
-                  {revealedSecrets[h.id] ? 'Скрыть секрет' : 'Показать секрет'}
+                  {revealedSecrets[h.id] ? t('webhooks.hideSecret') : t('webhooks.showSecret')}
                 </button>
                 {revealedSecrets[h.id] && (
                   <span className="inline-flex items-center gap-1 font-mono bg-gray-50 border border-gray-200 rounded px-2 py-1">
@@ -132,8 +135,8 @@ export default function WebhooksClient({ initialHooks }) {
       )}
 
       <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-700">
-        <h3 className="font-semibold text-gray-900 mb-2">Формат запроса</h3>
-        <p className="mb-2">Каждое событие отправляется методом <code className="bg-white px-1 rounded">POST</code> с JSON-телом:</p>
+        <h3 className="font-semibold text-gray-900 mb-2">{t('webhooks.format.heading')}</h3>
+        <p className="mb-2">{t('webhooks.format.intro1')} <code className="bg-white px-1 rounded">POST</code> {t('webhooks.format.intro2')}</p>
         <pre className="text-xs bg-white border border-gray-200 rounded p-2 overflow-x-auto">{`{
   "event_id": "uuid",
   "task_id": "uuid",
@@ -143,11 +146,11 @@ export default function WebhooksClient({ initialHooks }) {
   "created_at": "2026-...",
   "scope": { "owner_id": "uuid | null", "room_id": "uuid | null" }
 }`}</pre>
-        <h3 className="font-semibold text-gray-900 mt-3 mb-2">Заголовки</h3>
+        <h3 className="font-semibold text-gray-900 mt-3 mb-2">{t('webhooks.format.headers')}</h3>
         <ul className="list-disc pl-5 text-xs space-y-1">
-          <li><code className="bg-white px-1 rounded">X-Taskboard-Signature: sha256=&lt;hex&gt;</code> — HMAC-SHA256 от тела запроса с твоим секретом. Сверяйте перед обработкой.</li>
-          <li><code className="bg-white px-1 rounded">X-Taskboard-Event</code> — тип события.</li>
-          <li><code className="bg-white px-1 rounded">X-Taskboard-Subscription</code> — id подписки.</li>
+          <li><code className="bg-white px-1 rounded">X-Taskboard-Signature: sha256=&lt;hex&gt;</code> {t('webhooks.format.sigHint')}</li>
+          <li><code className="bg-white px-1 rounded">X-Taskboard-Event</code> {t('webhooks.format.eventHint')}</li>
+          <li><code className="bg-white px-1 rounded">X-Taskboard-Subscription</code> {t('webhooks.format.subHint')}</li>
         </ul>
       </div>
     </div>

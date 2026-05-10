@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { translate, getClientLocale } from '@/lib/i18n';
 
 function GoogleIcon() {
   return (
@@ -23,6 +24,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [locale, setLocale] = useState('ru');
+  useEffect(() => { setLocale(getClientLocale()); }, []);
+  const t = (k, p) => translate(locale, k, p);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -30,7 +34,7 @@ export default function LoginPage() {
     setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      setError(error.message === 'Invalid login credentials' ? 'Неверный email или пароль' : error.message);
+      setError(error.message === 'Invalid login credentials' ? t('auth.login.invalidCredentials') : error.message);
       setLoading(false);
       return;
     }
@@ -50,12 +54,12 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-6">
       <div className="w-full max-w-md bg-white border border-gray-200 rounded-lg p-8">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-1">Вход</h1>
-        <p className="text-sm text-gray-500 mb-6">Добро пожаловать обратно</p>
+        <h1 className="text-2xl font-semibold text-gray-900 mb-1">{t('auth.login.title')}</h1>
+        <p className="text-sm text-gray-500 mb-6">{t('auth.login.subtitle')}</p>
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Email</label>
+            <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">{t('auth.email')}</label>
             <input
               type="email"
               value={email}
@@ -65,7 +69,7 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">Пароль</label>
+            <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">{t('auth.password')}</label>
             <input
               type="password"
               value={password}
@@ -76,7 +80,7 @@ export default function LoginPage() {
             />
             <div className="mt-2 text-right">
               <Link href="/forgot-password" className="text-xs text-gray-500 hover:text-gray-900 hover:underline">
-                Забыли пароль?
+                {t('auth.login.forgotPassword')}
               </Link>
             </div>
           </div>
@@ -86,24 +90,24 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300"
           >
-            {loading ? 'Входим...' : 'Войти'}
+            {loading ? t('auth.login.submitting') : t('auth.login.submit')}
           </button>
         </form>
 
         <div className="my-4 flex items-center gap-3 text-xs text-gray-400">
-          <div className="flex-1 h-px bg-gray-200" /> или <div className="flex-1 h-px bg-gray-200" />
+          <div className="flex-1 h-px bg-gray-200" /> {t('auth.divider.or')} <div className="flex-1 h-px bg-gray-200" />
         </div>
         <button
           type="button"
           onClick={handleGoogle}
           className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center justify-center gap-2 text-gray-700"
         >
-          <GoogleIcon /> Войти через Google
+          <GoogleIcon /> {t('auth.login.googleButton')}
         </button>
 
         <p className="text-sm text-gray-600 mt-6 text-center">
-          Нет аккаунта?{' '}
-          <Link href="/signup" className="text-gray-900 font-medium hover:underline">Зарегистрируйтесь</Link>
+          {t('auth.login.noAccount')}{' '}
+          <Link href="/signup" className="text-gray-900 font-medium hover:underline">{t('auth.login.signupLink')}</Link>
         </p>
       </div>
     </div>

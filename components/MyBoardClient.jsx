@@ -40,7 +40,7 @@ export default function MyBoardClient({ userId, userProfile = null, locale = 'ru
         <BoardBody scope="personal" userId={userId} tags={tags} profiles={profiles} locale={locale} />
       </div>
       <div>
-        <TagsPanel ownerId={userId} tags={tags} />
+        <TagsPanel ownerId={userId} tags={tags} locale={locale} />
       </div>
     </div>
   );

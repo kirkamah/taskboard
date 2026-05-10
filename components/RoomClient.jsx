@@ -519,7 +519,7 @@ export default function RoomClient({ room, initialMembers, initialProfiles, init
 
         {showMembers && (
           <div className="space-y-4">
-          {canManageTags && <TagsPanel roomId={room.id} tags={tags} />}
+          {canManageTags && <TagsPanel roomId={room.id} tags={tags} locale={locale} />}
 
           {/* Переключатель вкладок */}
           <div className="bg-white border border-gray-200 rounded-lg">

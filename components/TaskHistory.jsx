@@ -4,13 +4,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { History, ChevronDown, ChevronRight } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Avatar from './Avatar';
+import { translate } from '@/lib/i18n';
 
-// Renders the audit trail for a single task. Events are produced by DB
-// triggers (see sql/24_task_events.sql). Collapsed by default to keep the
-// task modal compact — most users won't open it on every task.
-
-export default function TaskHistory({ taskId, profiles = {}, tagsById = {} }) {
+export default function TaskHistory({ taskId, profiles = {}, tagsById = {}, locale = 'ru' }) {
   const supabase = createClient();
+  const t = (k, p) => translate(locale, k, p);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -30,7 +28,6 @@ export default function TaskHistory({ taskId, profiles = {}, tagsById = {} }) {
     if (open) load();
   }, [open, load]);
 
-  // Realtime: only subscribe while the section is open. New events append.
   useEffect(() => {
     if (!open) return;
     const channel = supabase
@@ -43,17 +40,19 @@ export default function TaskHistory({ taskId, profiles = {}, tagsById = {} }) {
     return () => { supabase.removeChannel(channel); };
   }, [supabase, taskId, open, load]);
 
+  const localeTag = locale === 'en' ? 'en-US' : 'ru-RU';
   const fmtTime = (iso) => {
     const d = new Date(iso);
     const now = new Date();
     const sameDay = d.toDateString() === now.toDateString();
-    const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    const time = d.toLocaleTimeString(localeTag, { hour: '2-digit', minute: '2-digit' });
     if (sameDay) return time;
-    const date = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    const date = d.toLocaleDateString(localeTag, { day: 'numeric', month: 'short' });
     return `${date}, ${time}`;
   };
 
-  const actorName = (uid) => profiles[uid]?.display_name || (uid ? 'Пользователь' : 'Система');
+  const fallbackName = locale === 'en' ? 'User' : 'Пользователь';
+  const actorName = (uid) => profiles[uid]?.display_name || (uid ? fallbackName : t('history.system'));
 
   return (
     <div className="mt-4 pt-4 border-t border-gray-100">
@@ -63,14 +62,14 @@ export default function TaskHistory({ taskId, profiles = {}, tagsById = {} }) {
         className="text-xs font-medium text-gray-700 uppercase tracking-wide flex items-center gap-2 hover:text-gray-900"
       >
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <History size={12} /> История
+        <History size={12} /> {t('history.heading')}
       </button>
       {open && (
         <div className="mt-2">
           {loading ? (
-            <p className="text-xs text-gray-400">Загрузка…</p>
+            <p className="text-xs text-gray-400">{t('common.loading')}</p>
           ) : events.length === 0 ? (
-            <p className="text-xs text-gray-400">Событий нет.</p>
+            <p className="text-xs text-gray-400">{t('history.empty')}</p>
           ) : (
             <ol className="space-y-2">
               {events.map((ev) => (
@@ -78,7 +77,7 @@ export default function TaskHistory({ taskId, profiles = {}, tagsById = {} }) {
                   <Avatar profile={profiles[ev.actor_id] || null} size={20} />
                   <div className="flex-1 min-w-0 text-xs">
                     <span className="text-gray-900">{actorName(ev.actor_id)}</span>{' '}
-                    <span className="text-gray-600">{describeEvent(ev, profiles, tagsById)}</span>
+                    <span className="text-gray-600">{describeEvent(ev, profiles, tagsById, t)}</span>
                     <span className="text-gray-400 ml-1">· {fmtTime(ev.created_at)}</span>
                   </div>
                 </li>
@@ -91,47 +90,47 @@ export default function TaskHistory({ taskId, profiles = {}, tagsById = {} }) {
   );
 }
 
-function describeEvent(ev, profiles, tagsById) {
+function describeEvent(ev, profiles, tagsById, t) {
   const p = ev.payload || {};
   switch (ev.kind) {
     case 'task_created':
-      return 'создал(а) задачу';
+      return t('history.event.created');
     case 'task_updated':
-      return describeUpdate(p);
+      return describeUpdate(p, t);
     case 'assignee_added':
-      return `назначил(а) ${profiles[p.user_id]?.display_name || 'участника'}`;
+      return t('history.event.assigneeAdded', { who: profiles[p.user_id]?.display_name || t('history.placeholder.member') });
     case 'assignee_removed':
-      return `снял(а) назначение с ${profiles[p.user_id]?.display_name || 'участника'}`;
+      return t('history.event.assigneeRemoved', { who: profiles[p.user_id]?.display_name || t('history.placeholder.member') });
     case 'tag_added':
-      return `добавил(а) тег «${tagsById[p.tag_id]?.name || '...'}»`;
+      return t('history.event.tagAdded', { tag: tagsById[p.tag_id]?.name || t('history.placeholder.tag') });
     case 'tag_removed':
-      return `убрал(а) тег «${tagsById[p.tag_id]?.name || '...'}»`;
+      return t('history.event.tagRemoved', { tag: tagsById[p.tag_id]?.name || t('history.placeholder.tag') });
     default:
       return ev.kind;
   }
 }
 
-function describeUpdate(payload) {
+function describeUpdate(payload, t) {
   const parts = [];
   for (const [field, value] of Object.entries(payload)) {
     const [oldV, newV] = Array.isArray(value) ? value : [null, value];
-    parts.push(describeField(field, oldV, newV));
+    parts.push(describeField(field, oldV, newV, t));
   }
-  return parts.length ? `изменил(а) ${parts.join(', ')}` : 'обновил(а) задачу';
+  return parts.length ? t('history.event.changed', { fields: parts.join(', ') }) : t('history.event.updated');
 }
 
-function describeField(field, oldV, newV) {
+function describeField(field, oldV, newV, t) {
   switch (field) {
-    case 'title':       return 'название';
-    case 'description': return 'описание';
-    case 'important':   return newV ? 'квадрант → важное' : 'квадрант → не важное';
-    case 'urgent':      return newV ? 'квадрант → срочное' : 'квадрант → не срочное';
+    case 'title':       return t('history.field.title');
+    case 'description': return t('history.field.description');
+    case 'important':   return newV ? t('history.field.importantOn') : t('history.field.importantOff');
+    case 'urgent':      return newV ? t('history.field.urgentOn') : t('history.field.urgentOff');
     case 'due_at':
-      if (!newV) return 'снял(а) дедлайн';
-      if (!oldV) return 'поставил(а) дедлайн';
-      return 'дедлайн';
-    case 'done':        return newV ? 'отметил(а) выполненной' : 'вернул(а) в активные';
-    case 'archived_at': return newV ? 'отправил(а) в архив' : 'вернул(а) из архива';
+      if (!newV) return t('history.field.dueClear');
+      if (!oldV) return t('history.field.dueSet');
+      return t('history.field.due');
+    case 'done':        return newV ? t('history.field.doneOn') : t('history.field.doneOff');
+    case 'archived_at': return newV ? t('history.field.archiveOn') : t('history.field.archiveOff');
     default:            return field;
   }
 }

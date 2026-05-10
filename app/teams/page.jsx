@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ArrowLeft, Users, Bell, Lock } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import Navbar from '@/components/Navbar';
+import { readLocale, tFor } from '@/lib/i18n/server';
 
 export default async function TeamsPage() {
   const supabase = await createClient();
@@ -9,13 +10,14 @@ export default async function TeamsPage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('display_name, avatar_emoji, avatar_color')
+    .select('display_name, avatar_emoji, avatar_color, locale')
     .eq('id', user.id)
     .single();
 
   const userName = profile?.display_name || user.email.split('@')[0];
+  const locale = await readLocale({ profileLocale: profile?.locale });
+  const t = tFor(locale);
 
-  // Получаем членства пользователя с данными комнат
   const { data: memberships } = await supabase
     .from('room_members')
     .select('role, rooms(id, code, name, is_private)')
@@ -25,7 +27,6 @@ export default async function TeamsPage() {
     .filter(m => m.rooms)
     .map(m => ({ ...m.rooms, role: m.role }));
 
-  // Подсчёт участников, задач и непрочитанных уведомлений для каждой комнаты
   const enriched = await Promise.all(rooms.map(async (room) => {
     const [{ count: memberCount }, { count: taskCount }, { count: unreadCount }] = await Promise.all([
       supabase.from('room_members').select('*', { count: 'exact', head: true }).eq('room_id', room.id),
@@ -41,22 +42,26 @@ export default async function TeamsPage() {
     };
   }));
 
-  const roleLabel = { owner: 'Владелец', editor: 'Помощник', viewer: 'Зритель' };
+  const roleLabel = {
+    owner: t('teams.role.owner'),
+    editor: t('teams.role.editor'),
+    viewer: t('teams.role.viewer'),
+  };
 
   return (
     <>
-      <Navbar userName={userName} userId={user.id} userProfile={profile} />
+      <Navbar userName={userName} userId={user.id} userProfile={profile} locale={locale} />
       <div className="max-w-4xl mx-auto px-6 py-8">
         <Link href="/dashboard" className="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1 mb-4">
-          <ArrowLeft size={16} /> На главную
+          <ArrowLeft size={16} /> {t('nav.backToDashboard')}
         </Link>
-        <h1 className="text-2xl font-semibold text-gray-900 mb-6">Мои команды</h1>
+        <h1 className="text-2xl font-semibold text-gray-900 mb-6">{t('teams.title')}</h1>
 
         {enriched.length === 0 ? (
           <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
             <Users size={32} className="text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500">Вы пока ни в одной комнате</p>
-            <p className="text-sm text-gray-400 mt-1">Создайте свою или присоединитесь к чужой</p>
+            <p className="text-gray-500">{t('teams.empty.title')}</p>
+            <p className="text-sm text-gray-400 mt-1">{t('teams.empty.hint')}</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -80,7 +85,7 @@ export default async function TeamsPage() {
                       )}
                     </div>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      Код: <span className="font-mono">{room.code}</span> · Участников: {room.memberCount} · Задач: {room.taskCount}
+                      {t('teams.row.code')}: <span className="font-mono">{room.code}</span> · {t('teams.row.members')}: {room.memberCount} · {t('teams.row.tasks')}: {room.taskCount}
                     </p>
                   </div>
                   <span className="text-xs px-2 py-1 border border-gray-300 rounded flex-shrink-0">{roleLabel[room.role]}</span>

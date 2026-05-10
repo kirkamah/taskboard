@@ -7,11 +7,13 @@ import Avatar from './Avatar';
 import Markdown from './Markdown';
 import MentionInput from './MentionInput';
 import { extractMentions } from '@/lib/mentions';
+import { translate } from '@/lib/i18n';
 
 // Discussion thread for a single task. Mounted inside the task detail modal.
 // Permissions: any reader of the parent task can post; users edit/delete only
 // their own comments; canModerate (room owner) can also delete others'.
-export default function TaskComments({ taskId, taskTitle = '', userId, profiles = {}, canModerate = false, members = [], roomId = null }) {
+export default function TaskComments({ taskId, taskTitle = '', userId, profiles = {}, canModerate = false, members = [], roomId = null, locale = 'ru' }) {
+  const t = (k, p) => translate(locale, k, p);
   const supabase = createClient();
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -101,32 +103,34 @@ export default function TaskComments({ taskId, taskTitle = '', userId, profiles 
   };
 
   const del = async (id) => {
-    if (!window.confirm('Удалить комментарий?')) return;
+    if (!window.confirm(t('comments.deleteConfirm'))) return;
     await supabase.from('task_comments').delete().eq('id', id);
     await load();
   };
 
+  const localeTag = locale === 'en' ? 'en-US' : 'ru-RU';
   const fmtTime = (iso) => {
     const d = new Date(iso);
     const now = new Date();
     const sameDay = d.toDateString() === now.toDateString();
-    const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    const time = d.toLocaleTimeString(localeTag, { hour: '2-digit', minute: '2-digit' });
     if (sameDay) return time;
-    const date = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    const date = d.toLocaleDateString(localeTag, { day: 'numeric', month: 'short' });
     return `${date}, ${time}`;
   };
 
-  const getName = (uid) => profiles[uid]?.display_name || 'Пользователь';
+  const fallbackName = locale === 'en' ? 'User' : 'Пользователь';
+  const getName = (uid) => profiles[uid]?.display_name || fallbackName;
 
   return (
     <div className="mt-4 pt-4 border-t border-gray-100">
       <p className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
-        <MessageSquare size={12} /> Комментарии{comments.length > 0 ? ` · ${comments.length}` : ''}
+        <MessageSquare size={12} /> {t('comments.heading')}{comments.length > 0 ? ` · ${comments.length}` : ''}
       </p>
       {loading ? (
-        <p className="text-xs text-gray-400">Загрузка…</p>
+        <p className="text-xs text-gray-400">{t('common.loading')}</p>
       ) : comments.length === 0 ? (
-        <p className="text-xs text-gray-400 mb-3">Пока никто не комментировал.</p>
+        <p className="text-xs text-gray-400 mb-3">{t('comments.empty')}</p>
       ) : (
         <div className="space-y-3 mb-3">
           {comments.map((c) => {
@@ -140,7 +144,7 @@ export default function TaskComments({ taskId, taskTitle = '', userId, profiles 
                   <div className="flex items-center gap-2 text-xs">
                     <span className="font-medium text-gray-900">{getName(c.author_id)}</span>
                     <span className="text-gray-400">{fmtTime(c.created_at)}</span>
-                    {c.edited_at && <span className="text-gray-400 italic">изменено</span>}
+                    {c.edited_at && <span className="text-gray-400 italic">{t('comments.edited')}</span>}
                   </div>
                   {isEditing ? (
                     <div className="mt-1">
@@ -152,8 +156,8 @@ export default function TaskComments({ taskId, taskTitle = '', userId, profiles 
                         className="w-full text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gray-400"
                       />
                       <div className="flex gap-2 mt-1">
-                        <button onClick={saveEdit} disabled={!editingDraft.trim()} className="text-xs px-2 py-1 bg-gray-900 text-white rounded hover:bg-gray-800 disabled:opacity-50">Сохранить</button>
-                        <button onClick={cancelEdit} className="text-xs px-2 py-1 text-gray-600 hover:text-gray-900">Отмена</button>
+                        <button onClick={saveEdit} disabled={!editingDraft.trim()} className="text-xs px-2 py-1 bg-gray-900 text-white rounded hover:bg-gray-800 disabled:opacity-50">{t('common.save')}</button>
+                        <button onClick={cancelEdit} className="text-xs px-2 py-1 text-gray-600 hover:text-gray-900">{t('common.cancel')}</button>
                       </div>
                     </div>
                   ) : (
@@ -165,12 +169,12 @@ export default function TaskComments({ taskId, taskTitle = '', userId, profiles 
                         <div className="flex gap-3 mt-1 text-xs text-gray-400">
                           {isAuthor && (
                             <button onClick={() => startEdit(c)} className="hover:text-gray-700 inline-flex items-center gap-1">
-                              <Edit2 size={11} /> Изменить
+                              <Edit2 size={11} /> {t('comments.edit')}
                             </button>
                           )}
                           {canDelete && (
                             <button onClick={() => del(c.id)} className="hover:text-red-600 inline-flex items-center gap-1">
-                              <Trash2 size={11} /> Удалить
+                              <Trash2 size={11} /> {t('comments.delete')}
                             </button>
                           )}
                         </div>
@@ -190,12 +194,13 @@ export default function TaskComments({ taskId, taskTitle = '', userId, profiles 
             onChange={setDraft}
             members={members}
             profiles={profiles}
+            locale={locale}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
             }}
             rows={2}
             maxLength={4000}
-            placeholder="Написать комментарий… (@ — упомянуть)"
+            placeholder={t('comments.placeholder')}
             className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-gray-400 resize-y"
           />
         </div>
@@ -203,7 +208,7 @@ export default function TaskComments({ taskId, taskTitle = '', userId, profiles 
           onClick={submit}
           disabled={!draft.trim() || submitting}
           className="px-3 py-2 text-sm bg-gray-900 text-white rounded-md hover:bg-gray-800 disabled:opacity-50 inline-flex items-center gap-1"
-          title="Отправить (Ctrl+Enter)"
+          title={t('comments.send')}
         >
           <Send size={14} />
         </button>

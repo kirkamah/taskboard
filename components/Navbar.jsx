@@ -102,30 +102,31 @@ export default function Navbar({ userName, userId, userProfile, locale = 'ru' })
   };
 
   const formatAgo = (iso) => {
+    const localeTag = locale === 'en' ? 'en-US' : 'ru-RU';
     const diff = Date.now() - new Date(iso).getTime();
     const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'только что';
-    if (mins < 60) return `${mins} мин назад`;
+    if (mins < 1) return t('nav.ago.justNow');
+    if (mins < 60) return t('nav.ago.minutes', { n: mins });
     const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours} ч назад`;
+    if (hours < 24) return t('nav.ago.hours', { n: hours });
     const days = Math.floor(hours / 24);
-    if (days === 1) return 'вчера';
-    if (days < 7) return `${days} дн назад`;
-    return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    if (days === 1) return t('nav.ago.yesterday');
+    if (days < 7) return t('nav.ago.days', { n: days });
+    return new Date(iso).toLocaleDateString(localeTag, { day: 'numeric', month: 'short' });
   };
 
   const typeMeta = (type) => {
     switch (type) {
-      case 'request_created': return { label: 'Запрос на выполнение', Icon: MessageSquare, color: 'text-blue-600' };
-      case 'request_approved': return { label: 'Запрос одобрен', Icon: Check, color: 'text-green-600' };
-      case 'request_rejected': return { label: 'Запрос отклонён', Icon: X, color: 'text-red-600' };
-      case 'task_completed': return { label: 'Задача выполнена', Icon: Check, color: 'text-green-600' };
-      case 'ownership_transferred': return { label: 'Передача владения', Icon: Crown, color: 'text-amber-600' };
-      case 'join_request_created': return { label: 'Заявка на вступление', Icon: UserPlus, color: 'text-blue-600' };
-      case 'join_request_approved': return { label: 'Заявка одобрена', Icon: UserCheck, color: 'text-green-600' };
-      case 'join_request_rejected': return { label: 'Заявка отклонена', Icon: UserX, color: 'text-red-600' };
-      case 'mention': return { label: 'Вас упомянули', Icon: AtSign, color: 'text-blue-600' };
-      default: return { label: 'Уведомление', Icon: MessageSquare, color: 'text-gray-600' };
+      case 'request_created': return { label: t('nav.notif.requestCreated'), Icon: MessageSquare, color: 'text-blue-600' };
+      case 'request_approved': return { label: t('nav.notif.requestApproved'), Icon: Check, color: 'text-green-600' };
+      case 'request_rejected': return { label: t('nav.notif.requestRejected'), Icon: X, color: 'text-red-600' };
+      case 'task_completed': return { label: t('nav.notif.taskCompleted'), Icon: Check, color: 'text-green-600' };
+      case 'ownership_transferred': return { label: t('nav.notif.ownership'), Icon: Crown, color: 'text-amber-600' };
+      case 'join_request_created': return { label: t('nav.notif.joinCreated'), Icon: UserPlus, color: 'text-blue-600' };
+      case 'join_request_approved': return { label: t('nav.notif.joinApproved'), Icon: UserCheck, color: 'text-green-600' };
+      case 'join_request_rejected': return { label: t('nav.notif.joinRejected'), Icon: UserX, color: 'text-red-600' };
+      case 'mention': return { label: t('nav.notif.mention'), Icon: AtSign, color: 'text-blue-600' };
+      default: return { label: t('nav.notif.default'), Icon: MessageSquare, color: 'text-gray-600' };
     }
   };
 
@@ -175,7 +176,7 @@ export default function Navbar({ userName, userId, userProfile, locale = 'ru' })
                 onClick={closeMenu}
                 className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
               >
-                <KeyRound size={14} /> API-ключи
+                <KeyRound size={14} /> {t('nav.apiKeys')}
               </Link>
               <button
                 onClick={() => setView('notifications')}
@@ -204,12 +205,12 @@ export default function Navbar({ userName, userId, userProfile, locale = 'ru' })
                 <button
                   onClick={() => { setView('menu'); setExpandedId(null); }}
                   className="p-1 rounded hover:bg-gray-100 text-gray-500"
-                  aria-label="Назад"
+                  aria-label={t('nav.back')}
                 >
                   <ArrowLeft size={16} />
                 </button>
                 <h3 className="font-semibold text-gray-900 text-sm flex-1">{t('nav.notifications')}</h3>
-                {unreadCount > 0 && <span className="text-xs text-gray-500">{unreadCount} новых</span>}
+                {unreadCount > 0 && <span className="text-xs text-gray-500">{t('nav.unread', { n: unreadCount })}</span>}
               </div>
               <div className="max-h-[70vh] overflow-y-auto">
                 {items.length === 0 ? (
@@ -222,25 +223,25 @@ export default function Navbar({ userName, userId, userProfile, locale = 'ru' })
                     const isJoinRequest = n.type === 'join_request_created'
                       || n.type === 'join_request_approved'
                       || n.type === 'join_request_rejected';
-                    const roomName = n.payload?.room_name || 'Комната';
-                    const requesterName = n.payload?.requester_name || 'Пользователь';
+                    const roomName = n.payload?.room_name || t('nav.notif.placeholderRoom');
+                    const requesterName = n.payload?.requester_name || t('nav.notif.placeholderUser');
                     let taskTitle;
                     if (isOwnership) {
-                      taskTitle = `Вам передали владение комнатой «${roomName}»`;
+                      taskTitle = t('nav.notif.ownershipMsg', { room: roomName });
                     } else if (n.type === 'join_request_created') {
-                      taskTitle = `${requesterName} хочет вступить в «${roomName}»`;
+                      taskTitle = t('nav.notif.joinCreatedMsg', { user: requesterName, room: roomName });
                     } else if (n.type === 'join_request_approved') {
-                      taskTitle = `Ваша заявка в «${roomName}» одобрена`;
+                      taskTitle = t('nav.notif.joinApprovedMsg', { room: roomName });
                     } else if (n.type === 'join_request_rejected') {
-                      taskTitle = `Ваша заявка в «${roomName}» отклонена`;
+                      taskTitle = t('nav.notif.joinRejectedMsg', { room: roomName });
                     } else {
-                      taskTitle = n.payload?.task_title || 'Задача';
+                      taskTitle = n.payload?.task_title || t('nav.notif.placeholderTask');
                     }
                     const requestNote = n.payload?.request_note;
                     const responseNote = n.payload?.response_note;
                     const completionNote = n.payload?.completion_note;
                     const mentionSnippet = n.type === 'mention' ? n.payload?.snippet : null;
-                    const goLabel = isOwnership || isJoinRequest ? 'Перейти к комнате' : 'Перейти к задаче';
+                    const goLabel = isOwnership || isJoinRequest ? t('nav.notif.goToRoom') : t('nav.notif.goToTask');
                     const { Icon } = meta;
 
                     return (
@@ -275,25 +276,25 @@ export default function Navbar({ userName, userId, userProfile, locale = 'ru' })
                             <p className="text-xs text-gray-500 uppercase tracking-wide">{meta.label}</p>
                             {requestNote && (
                               <div className="bg-gray-50 border border-gray-200 rounded-md p-2 text-sm text-gray-700">
-                                <p className="text-[10px] font-medium text-gray-500 uppercase mb-1">Комментарий</p>
+                                <p className="text-[10px] font-medium text-gray-500 uppercase mb-1">{t('nav.notif.commentLabel')}</p>
                                 <LinkifiedText text={requestNote} />
                               </div>
                             )}
                             {responseNote && (
                               <div className="bg-gray-50 border border-gray-200 rounded-md p-2 text-sm text-gray-700">
-                                <p className="text-[10px] font-medium text-gray-500 uppercase mb-1">Комментарий</p>
+                                <p className="text-[10px] font-medium text-gray-500 uppercase mb-1">{t('nav.notif.commentLabel')}</p>
                                 <LinkifiedText text={responseNote} />
                               </div>
                             )}
                             {completionNote && (
                               <div className="bg-gray-50 border border-gray-200 rounded-md p-2 text-sm text-gray-700">
-                                <p className="text-[10px] font-medium text-gray-500 uppercase mb-1">Комментарий</p>
+                                <p className="text-[10px] font-medium text-gray-500 uppercase mb-1">{t('nav.notif.commentLabel')}</p>
                                 <LinkifiedText text={completionNote} />
                               </div>
                             )}
                             {mentionSnippet && (
                               <div className="bg-gray-50 border border-gray-200 rounded-md p-2 text-sm text-gray-700">
-                                <p className="text-[10px] font-medium text-gray-500 uppercase mb-1">Фрагмент</p>
+                                <p className="text-[10px] font-medium text-gray-500 uppercase mb-1">{t('nav.notif.snippetLabel')}</p>
                                 <LinkifiedText text={mentionSnippet} />
                               </div>
                             )}
@@ -301,7 +302,7 @@ export default function Navbar({ userName, userId, userProfile, locale = 'ru' })
                               onClick={() => goToTask(n)}
                               className="w-full px-3 py-2 text-sm bg-gray-900 text-white rounded-md hover:bg-gray-800"
                             >
-                              {n.type === 'join_request_created' ? 'Перейти к заявкам' : goLabel}
+                              {n.type === 'join_request_created' ? t('nav.notif.goToRequests') : goLabel}
                             </button>
                           </div>
                         )}

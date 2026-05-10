@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Paperclip, Upload, Trash2, FileText, Image as ImageIcon, Download } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { translate } from '@/lib/i18n';
 
 const BUCKET = 'task-attachments';
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -11,7 +12,8 @@ const MAX_BYTES = 10 * 1024 * 1024;
 // URLs on demand for downloads and image previews. Permissions: anyone who
 // can read the parent task can attach; uploader (or room owner via
 // canModerate) can delete.
-export default function TaskAttachments({ taskId, userId, profiles = {}, canModerate = false }) {
+export default function TaskAttachments({ taskId, userId, profiles = {}, canModerate = false, locale = 'ru' }) {
+  const t = (k, p) => translate(locale, k, p);
   const supabase = createClient();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -67,7 +69,7 @@ export default function TaskAttachments({ taskId, userId, profiles = {}, canMode
     if (!file) return;
     setError('');
     if (file.size > MAX_BYTES) {
-      setError('Файл больше 10 МБ');
+      setError(t('attachments.tooLarge'));
       return;
     }
     setUploading(true);
@@ -109,29 +111,31 @@ export default function TaskAttachments({ taskId, userId, profiles = {}, canMode
   };
 
   const del = async (it) => {
-    if (!window.confirm(`Удалить «${it.filename}»?`)) return;
+    if (!window.confirm(t('attachments.deleteConfirm', { name: it.filename }))) return;
     await supabase.storage.from(BUCKET).remove([it.storage_path]);
     await supabase.from('task_attachments').delete().eq('id', it.id);
     await load();
   };
 
   const fmtSize = (n) => {
-    if (n < 1024) return `${n} Б`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} КБ`;
-    return `${(n / (1024 * 1024)).toFixed(2)} МБ`;
+    const isEn = locale === 'en';
+    if (n < 1024) return `${n} ${isEn ? 'B' : 'Б'}`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} ${isEn ? 'KB' : 'КБ'}`;
+    return `${(n / (1024 * 1024)).toFixed(2)} ${isEn ? 'MB' : 'МБ'}`;
   };
 
+  const localeTag = locale === 'en' ? 'en-US' : 'ru-RU';
   const fmtTime = (iso) => {
     const d = new Date(iso);
     const sameDay = d.toDateString() === new Date().toDateString();
-    if (sameDay) return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    if (sameDay) return d.toLocaleTimeString(localeTag, { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleDateString(localeTag, { day: 'numeric', month: 'short' });
   };
 
   return (
     <div className="mt-4 pt-4 border-t border-gray-100">
       <p className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
-        <Paperclip size={12} /> Вложения{items.length > 0 ? ` · ${items.length}` : ''}
+        <Paperclip size={12} /> {t('attachments.heading')}{items.length > 0 ? ` · ${items.length}` : ''}
       </p>
       {!loading && items.length > 0 && (
         <div className="space-y-1.5 mb-2">
@@ -151,12 +155,12 @@ export default function TaskAttachments({ taskId, userId, profiles = {}, canMode
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-gray-900 truncate">{it.filename}</p>
                   <p className="text-xs text-gray-500">
-                    {fmtSize(it.size_bytes)} · {fmtTime(it.created_at)} · {profiles[it.uploader_id]?.display_name || 'Пользователь'}
+                    {fmtSize(it.size_bytes)} · {fmtTime(it.created_at)} · {profiles[it.uploader_id]?.display_name || (locale === 'en' ? 'User' : 'Пользователь')}
                   </p>
                 </div>
-                <button onClick={() => download(it)} className="text-gray-500 hover:text-gray-900 p-1" title="Скачать"><Download size={14} /></button>
+                <button onClick={() => download(it)} className="text-gray-500 hover:text-gray-900 p-1" title={t('attachments.download')}><Download size={14} /></button>
                 {canDelete && (
-                  <button onClick={() => del(it)} className="text-gray-400 hover:text-red-600 p-1" title="Удалить"><Trash2 size={14} /></button>
+                  <button onClick={() => del(it)} className="text-gray-400 hover:text-red-600 p-1" title={t('common.delete')}><Trash2 size={14} /></button>
                 )}
               </div>
             );
@@ -176,9 +180,9 @@ export default function TaskAttachments({ taskId, userId, profiles = {}, canMode
           disabled={uploading}
           className="text-xs px-2.5 py-1 border border-gray-300 rounded-md bg-white hover:bg-gray-50 disabled:opacity-50 inline-flex items-center gap-1"
         >
-          <Upload size={12} /> {uploading ? 'Загрузка…' : 'Прикрепить файл'}
+          <Upload size={12} /> {uploading ? t('attachments.uploading') : t('attachments.button')}
         </button>
-        <span className="text-xs text-gray-400">до 10 МБ</span>
+        <span className="text-xs text-gray-400">{t('attachments.limit')}</span>
       </div>
       {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
     </div>

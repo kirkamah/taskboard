@@ -5,6 +5,7 @@ import { Filter, X, Check, Search } from 'lucide-react';
 import Tag from './Tag';
 import Avatar from './Avatar';
 import { DEFAULT_FILTERS, countActiveFilters } from '@/lib/taskFilters';
+import { translate } from '@/lib/i18n';
 
 // Per-user view filters for the board. Selections persist via localStorage in
 // the parent (BoardBody); this component only renders the UI and reports
@@ -17,7 +18,8 @@ import { DEFAULT_FILTERS, countActiveFilters } from '@/lib/taskFilters';
 //  - members, profiles: room member list — only used in 'room' scope
 //  - tags: tag list available in this scope (personal or room)
 //  - userId: current user id, to render "Я" pill for assignee='me'
-export default function TaskFilters({ scope, filters, onChange, members = [], profiles = {}, tags = [], userId }) {
+export default function TaskFilters({ scope, filters, onChange, members = [], profiles = {}, tags = [], userId, locale = 'ru' }) {
+  const t = (k, p) => translate(locale, k, p);
   const [open, setOpen] = useState(false);
   const panelRef = useRef(null);
   const buttonRef = useRef(null);
@@ -45,30 +47,39 @@ export default function TaskFilters({ scope, filters, onChange, members = [], pr
     set({ tagIds: next, noTags: false });
   };
 
-  const getName = (uid) => profiles[uid]?.display_name || 'Пользователь';
+  const fallbackName = locale === 'en' ? 'User' : 'Пользователь';
+  const getName = (uid) => profiles[uid]?.display_name || fallbackName;
 
   // -- Active-filter chips (shown inline in the bar) --------------------------
   const chips = [];
   if (filters.assignee) {
     let label;
-    if (filters.assignee === 'me') label = 'Я (назначено)';
-    else if (filters.assignee === 'unassigned') label = 'Без назначения';
-    else label = `Назначено: ${getName(filters.assignee)}`;
+    if (filters.assignee === 'me') label = locale === 'en' ? 'Me (assigned)' : 'Я (назначено)';
+    else if (filters.assignee === 'unassigned') label = t('filters.assignee.unassigned');
+    else label = `${locale === 'en' ? 'Assigned' : 'Назначено'}: ${getName(filters.assignee)}`;
     chips.push({ key: 'assignee', label, clear: () => set({ assignee: null }) });
   }
   if (filters.noTags) {
-    chips.push({ key: 'notags', label: 'Без тегов', clear: () => set({ noTags: false }) });
+    chips.push({ key: 'notags', label: t('filters.tags.none'), clear: () => set({ noTags: false }) });
   } else if (filters.tagIds && filters.tagIds.length > 0) {
     const names = filters.tagIds.map((id) => tagsById[id]?.name).filter(Boolean);
-    const label = names.length <= 2 ? `Теги: ${names.join(', ')}` : `Теги: ${names.slice(0, 2).join(', ')} +${names.length - 2}`;
+    const tagsWord = locale === 'en' ? 'Tags' : 'Теги';
+    const label = names.length <= 2 ? `${tagsWord}: ${names.join(', ')}` : `${tagsWord}: ${names.slice(0, 2).join(', ')} +${names.length - 2}`;
     chips.push({ key: 'tags', label, clear: () => set({ tagIds: [] }) });
   }
   if (filters.due) {
-    const DUE_LABELS = { overdue: 'Просрочено', today: 'Сегодня', week: 'На 7 дней', none: 'Без дедлайна', any: 'С дедлайном' };
+    const DUE_LABELS = locale === 'en'
+      ? { overdue: 'Overdue', today: 'Today', week: 'Next 7 days', none: 'No due date', any: 'Has due date' }
+      : { overdue: 'Просрочено', today: 'Сегодня', week: 'На 7 дней', none: 'Без дедлайна', any: 'С дедлайном' };
     chips.push({ key: 'due', label: DUE_LABELS[filters.due] || filters.due, clear: () => set({ due: null }) });
   }
   if (filters.quadrant) {
-    const QUAD_LABELS = { do: 'Важно и срочно', plan: 'Важно, не срочно', delegate: 'Не важно, срочно', drop: 'Не важно, не срочно' };
+    const QUAD_LABELS = {
+      do: t('board.quadrant.do'),
+      plan: t('board.quadrant.plan'),
+      delegate: t('board.quadrant.delegate'),
+      drop: t('board.quadrant.drop'),
+    };
     chips.push({ key: 'quad', label: QUAD_LABELS[filters.quadrant] || filters.quadrant, clear: () => set({ quadrant: null }) });
   }
 
@@ -84,7 +95,7 @@ export default function TaskFilters({ scope, filters, onChange, members = [], pr
             type="text"
             value={query}
             onChange={(e) => set({ query: e.target.value })}
-            placeholder="Поиск по задачам"
+            placeholder={t('filters.searchPlaceholder')}
             className={`pl-8 pr-7 py-1.5 text-sm border rounded-lg w-56 focus:outline-none focus:ring-1 ${hasQuery ? 'border-gray-900 ring-gray-900' : 'border-gray-300 focus:ring-gray-400'}`}
           />
           {hasQuery && (
@@ -92,7 +103,7 @@ export default function TaskFilters({ scope, filters, onChange, members = [], pr
               type="button"
               onClick={() => set({ query: '' })}
               className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 p-0.5"
-              title="Очистить поиск"
+              title={t('filters.searchClear')}
             >
               <X size={14} />
             </button>
@@ -106,7 +117,7 @@ export default function TaskFilters({ scope, filters, onChange, members = [], pr
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-lg ${active > 0 ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}
           >
             <Filter size={14} />
-            Фильтры
+            {t('filters.button')}
             {active > 0 && <span className="ml-0.5 text-xs opacity-80">({active})</span>}
           </button>
 
@@ -116,9 +127,9 @@ export default function TaskFilters({ scope, filters, onChange, members = [], pr
               className="absolute z-40 mt-2 left-0 w-[320px] bg-white border border-gray-200 rounded-lg shadow-lg p-4 space-y-4"
             >
               {isRoom && (
-                <FilterSection title="Назначено">
-                  <PickPill active={filters.assignee === 'me'} onClick={() => set({ assignee: filters.assignee === 'me' ? null : 'me' })}>На меня</PickPill>
-                  <PickPill active={filters.assignee === 'unassigned'} onClick={() => set({ assignee: filters.assignee === 'unassigned' ? null : 'unassigned' })}>Без назначения</PickPill>
+                <FilterSection title={t('filters.section.assignee')}>
+                  <PickPill active={filters.assignee === 'me'} onClick={() => set({ assignee: filters.assignee === 'me' ? null : 'me' })}>{t('filters.assignee.me')}</PickPill>
+                  <PickPill active={filters.assignee === 'unassigned'} onClick={() => set({ assignee: filters.assignee === 'unassigned' ? null : 'unassigned' })}>{t('filters.assignee.unassigned')}</PickPill>
                   {members.filter((m) => m.user_id !== userId).map((m) => (
                     <PickPill
                       key={m.user_id}
@@ -134,51 +145,51 @@ export default function TaskFilters({ scope, filters, onChange, members = [], pr
                 </FilterSection>
               )}
 
-              <FilterSection title="Теги">
+              <FilterSection title={t('filters.section.tags')}>
                 {tags.length === 0 ? (
-                  <span className="text-xs text-gray-400">В этом контексте тегов пока нет.</span>
+                  <span className="text-xs text-gray-400">{t('filters.tags.empty')}</span>
                 ) : (
                   <>
-                    {tags.map((t) => {
-                      const selected = (filters.tagIds || []).includes(t.id);
+                    {tags.map((tag) => {
+                      const selected = (filters.tagIds || []).includes(tag.id);
                       return (
                         <button
-                          key={t.id}
+                          key={tag.id}
                           type="button"
-                          onClick={() => toggleTag(t.id)}
+                          onClick={() => toggleTag(tag.id)}
                           className={`inline-flex items-center gap-1 border rounded-full px-0.5 py-0.5 ${selected ? 'border-gray-900' : 'border-transparent'}`}
                         >
-                          <Tag tag={t} />
+                          <Tag tag={tag} />
                           {selected && <Check size={12} className="text-gray-900 mr-1" />}
                         </button>
                       );
                     })}
-                    <PickPill active={filters.noTags} onClick={() => set({ noTags: !filters.noTags, tagIds: [] })}>Без тегов</PickPill>
+                    <PickPill active={filters.noTags} onClick={() => set({ noTags: !filters.noTags, tagIds: [] })}>{t('filters.tags.none')}</PickPill>
                   </>
                 )}
               </FilterSection>
 
-              <FilterSection title="Дедлайн">
-                <PickPill active={filters.due === 'overdue'} onClick={() => set({ due: filters.due === 'overdue' ? null : 'overdue' })}>Просрочено</PickPill>
-                <PickPill active={filters.due === 'today'} onClick={() => set({ due: filters.due === 'today' ? null : 'today' })}>Сегодня</PickPill>
-                <PickPill active={filters.due === 'week'} onClick={() => set({ due: filters.due === 'week' ? null : 'week' })}>Ближайшие 7 дней</PickPill>
-                <PickPill active={filters.due === 'any'} onClick={() => set({ due: filters.due === 'any' ? null : 'any' })}>С дедлайном</PickPill>
-                <PickPill active={filters.due === 'none'} onClick={() => set({ due: filters.due === 'none' ? null : 'none' })}>Без дедлайна</PickPill>
+              <FilterSection title={t('filters.section.due')}>
+                <PickPill active={filters.due === 'overdue'} onClick={() => set({ due: filters.due === 'overdue' ? null : 'overdue' })}>{t('filters.due.overdue')}</PickPill>
+                <PickPill active={filters.due === 'today'} onClick={() => set({ due: filters.due === 'today' ? null : 'today' })}>{t('filters.due.today')}</PickPill>
+                <PickPill active={filters.due === 'week'} onClick={() => set({ due: filters.due === 'week' ? null : 'week' })}>{t('filters.due.week')}</PickPill>
+                <PickPill active={filters.due === 'any'} onClick={() => set({ due: filters.due === 'any' ? null : 'any' })}>{t('filters.due.any')}</PickPill>
+                <PickPill active={filters.due === 'none'} onClick={() => set({ due: filters.due === 'none' ? null : 'none' })}>{t('filters.due.none')}</PickPill>
               </FilterSection>
 
-              <FilterSection title="Квадрант">
-                <PickPill active={filters.quadrant === 'do'} onClick={() => set({ quadrant: filters.quadrant === 'do' ? null : 'do' })}>Важно и срочно</PickPill>
-                <PickPill active={filters.quadrant === 'plan'} onClick={() => set({ quadrant: filters.quadrant === 'plan' ? null : 'plan' })}>Важно, не срочно</PickPill>
-                <PickPill active={filters.quadrant === 'delegate'} onClick={() => set({ quadrant: filters.quadrant === 'delegate' ? null : 'delegate' })}>Не важно, срочно</PickPill>
-                <PickPill active={filters.quadrant === 'drop'} onClick={() => set({ quadrant: filters.quadrant === 'drop' ? null : 'drop' })}>Не важно, не срочно</PickPill>
+              <FilterSection title={t('filters.section.quadrant')}>
+                <PickPill active={filters.quadrant === 'do'} onClick={() => set({ quadrant: filters.quadrant === 'do' ? null : 'do' })}>{t('board.quadrant.do')}</PickPill>
+                <PickPill active={filters.quadrant === 'plan'} onClick={() => set({ quadrant: filters.quadrant === 'plan' ? null : 'plan' })}>{t('board.quadrant.plan')}</PickPill>
+                <PickPill active={filters.quadrant === 'delegate'} onClick={() => set({ quadrant: filters.quadrant === 'delegate' ? null : 'delegate' })}>{t('board.quadrant.delegate')}</PickPill>
+                <PickPill active={filters.quadrant === 'drop'} onClick={() => set({ quadrant: filters.quadrant === 'drop' ? null : 'drop' })}>{t('board.quadrant.drop')}</PickPill>
               </FilterSection>
 
               <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                 <button type="button" onClick={reset} className="text-xs text-gray-500 hover:text-gray-900" disabled={active === 0}>
-                  Сбросить всё
+                  {t('filters.resetAll')}
                 </button>
                 <button type="button" onClick={() => setOpen(false)} className="text-xs text-gray-700 hover:text-gray-900">
-                  Готово
+                  {t('filters.done')}
                 </button>
               </div>
             </div>
@@ -191,7 +202,7 @@ export default function TaskFilters({ scope, filters, onChange, members = [], pr
             type="button"
             onClick={c.clear}
             className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full bg-gray-100 border border-gray-200 text-gray-700 hover:bg-gray-200"
-            title="Убрать фильтр"
+            title={locale === 'en' ? 'Remove filter' : 'Убрать фильтр'}
           >
             {c.label}
             <X size={12} />
@@ -200,7 +211,7 @@ export default function TaskFilters({ scope, filters, onChange, members = [], pr
 
         {active > 0 && (
           <button type="button" onClick={reset} className="text-xs text-gray-500 hover:text-gray-900 underline underline-offset-2">
-            Сбросить
+            {t('filters.reset')}
           </button>
         )}
       </div>

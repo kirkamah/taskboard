@@ -3,10 +3,12 @@
 import { useState, useEffect } from 'react';
 import { Bell, BellOff } from 'lucide-react';
 import { pushSupported, vapidConfigured, getCurrentSubscription, subscribePush, unsubscribePush } from '@/lib/pushClient';
+import { translate } from '@/lib/i18n';
 
 // Profile-page toggle to subscribe / unsubscribe this browser from Web Push
 // reminders. Subscriptions are per-device (a user can have many).
-export default function PushToggle({ userId }) {
+export default function PushToggle({ userId, locale = 'ru' }) {
+  const t = (k, p) => translate(locale, k, p);
   const [supported, setSupported] = useState(false);
   const [configured, setConfigured] = useState(false);
   const [subscribed, setSubscribed] = useState(false);
@@ -22,10 +24,10 @@ export default function PushToggle({ userId }) {
   }, []);
 
   if (!supported) {
-    return <p className="text-sm text-gray-500">Этот браузер не поддерживает Web Push.</p>;
+    return <p className="text-sm text-gray-500">{t('push.unsupported')}</p>;
   }
   if (!configured) {
-    return <p className="text-sm text-gray-500">Push-уведомления не настроены администратором (нет VAPID-ключа).</p>;
+    return <p className="text-sm text-gray-500">{t('push.notConfigured')}</p>;
   }
 
   const onToggle = async () => {
@@ -40,7 +42,7 @@ export default function PushToggle({ userId }) {
         setSubscribed(true);
       }
     } catch (e) {
-      setError(e.message || 'Ошибка');
+      setError(e.message || t('common.error'));
     }
     setBusy(false);
   };
@@ -54,10 +56,10 @@ export default function PushToggle({ userId }) {
         className={`px-3 py-1.5 text-sm border rounded-lg inline-flex items-center gap-2 disabled:opacity-50 ${subscribed ? 'border-gray-900 bg-gray-900 text-white hover:bg-gray-800' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'}`}
       >
         {subscribed ? <Bell size={14} /> : <BellOff size={14} />}
-        {subscribed ? 'Уведомления включены' : 'Включить уведомления'}
+        {subscribed ? t('push.enabled') : t('push.enable')}
       </button>
       <p className="text-xs text-gray-500 mt-2">
-        Получать push-уведомления на этом устройстве о приближающихся дедлайнах. Можно отключить в любой момент.
+        {t('push.hint')}
       </p>
       {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
     </div>
