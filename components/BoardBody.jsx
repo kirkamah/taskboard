@@ -52,6 +52,11 @@ export default function BoardBody({
   // Bulk-edit mode: clicking a card toggles selection instead of opening it.
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  // Templates: blueprint tasks. Loaded once on mount and refreshed when the
+  // user saves/deletes a template.
+  const [templates, setTemplates] = useState([]);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [savingTemplateName, setSavingTemplateName] = useState(null); // null | string
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [draggingTaskId, setDraggingTaskId] = useState(null);
 
@@ -225,6 +230,78 @@ export default function BoardBody({
     { important: false, urgent: true, title: 'Не важно, срочно' },
     { important: false, urgent: false, title: 'Не важно, не срочно' }
   ];
+
+  // Templates -----------------------------------------------------------------
+  const loadTemplates = useCallback(async () => {
+    let q = supabase
+      .from('task_templates')
+      .select('id, name, title, description, important, urgent, tag_ids, owner_id, room_id, task_template_checklist_items(id, text, position)')
+      .order('created_at', { ascending: false });
+    if (scope === 'personal') q = q.eq('owner_id', userId).is('room_id', null);
+    else q = q.eq('room_id', roomId);
+    const { data } = await q;
+    setTemplates((data || []).map((t) => ({
+      ...t,
+      checklist: (t.task_template_checklist_items || [])
+        .slice()
+        .sort((a, b) => a.position - b.position)
+        .map((c) => ({ text: c.text, done: false })),
+    })));
+  }, [scope, roomId, userId, supabase]);
+
+  useEffect(() => { loadTemplates(); }, [loadTemplates]);
+
+  const applyTemplate = (tpl) => {
+    setEditingTask(null);
+    setFormData({
+      title: tpl.title || '',
+      description: tpl.description || '',
+      important: !!tpl.important,
+      urgent: !!tpl.urgent,
+      due_at: '',
+      assignees: [],
+      tags: (tpl.tag_ids || []).filter((tid) => tags.some((t) => t.id === tid)),
+      checklist: (tpl.checklist || []).map((c) => ({ text: c.text, done: false })),
+    });
+    setShowTemplatePicker(false);
+    setShowAddModal(true);
+  };
+
+  const saveAsTemplate = async (name) => {
+    const cleanName = (name || '').trim();
+    if (!cleanName) return;
+    const payload = scope === 'personal'
+      ? { owner_id: userId, room_id: null }
+      : { owner_id: null, room_id: roomId };
+    const { data, error } = await supabase
+      .from('task_templates')
+      .insert({
+        ...payload,
+        name: cleanName,
+        title: formData.title || cleanName,
+        description: formData.description || '',
+        important: !!formData.important,
+        urgent: !!formData.urgent,
+        tag_ids: (formData.tags || []).filter(Boolean),
+      })
+      .select('id')
+      .single();
+    if (error || !data) return;
+    const items = (formData.checklist || [])
+      .map((c, idx) => ({ text: (c.text || '').trim(), position: idx }))
+      .filter((c) => c.text.length > 0);
+    if (items.length > 0) {
+      await supabase.from('task_template_checklist_items').insert(items.map((it) => ({ template_id: data.id, ...it })));
+    }
+    setSavingTemplateName(null);
+    await loadTemplates();
+  };
+
+  const deleteTemplate = async (id) => {
+    if (!window.confirm('Удалить шаблон?')) return;
+    await supabase.from('task_templates').delete().eq('id', id);
+    await loadTemplates();
+  };
 
   // Per-user view filters: apply before quadrant split, so counts and empty
   // states reflect what the current user has chosen to see.
@@ -637,6 +714,45 @@ export default function BoardBody({
             >
               {selectionMode ? 'Выйти из выделения' : 'Выделить'}
             </button>
+          )}
+          {canCreateTask && templates.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setShowTemplatePicker((v) => !v)}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-100"
+                title="Создать задачу из шаблона"
+              >
+                Из шаблона
+              </button>
+              {showTemplatePicker && (
+                <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-30 max-h-80 overflow-auto">
+                  {templates.length === 0 ? (
+                    <p className="text-xs text-gray-400 px-3 py-2">Шаблонов пока нет.</p>
+                  ) : (
+                    <div className="py-1">
+                      {templates.map((t) => (
+                        <div key={t.id} className="flex items-center gap-1 px-1">
+                          <button
+                            onClick={() => applyTemplate(t)}
+                            className="flex-1 text-left px-2 py-1.5 hover:bg-gray-50 rounded text-sm min-w-0"
+                          >
+                            <div className="font-medium text-gray-900 truncate">{t.name}</div>
+                            <div className="text-xs text-gray-500 truncate">{t.title}</div>
+                          </button>
+                          <button
+                            onClick={() => deleteTemplate(t.id)}
+                            className="text-gray-400 hover:text-red-600 p-1"
+                            title="Удалить шаблон"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
           {canCreateTask && (
             <button onClick={openAdd} className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 flex items-center gap-2">
@@ -1254,9 +1370,36 @@ export default function BoardBody({
               </div>
             )}
           </div>
-          <div className="flex justify-end gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
-            <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100">Отмена</button>
-            <button onClick={save} disabled={!formData.title.trim()} className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300">{editingTask ? 'Сохранить' : 'Создать'}</button>
+          <div className="flex items-center gap-2 p-4 border-t border-gray-200 bg-gray-50 rounded-b-lg">
+            {savingTemplateName !== null ? (
+              <div className="flex-1 flex items-center gap-2">
+                <input
+                  type="text"
+                  autoFocus
+                  value={savingTemplateName}
+                  onChange={(e) => setSavingTemplateName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveAsTemplate(savingTemplateName); if (e.key === 'Escape') setSavingTemplateName(null); }}
+                  placeholder="Название шаблона"
+                  className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-gray-900"
+                />
+                <button onClick={() => saveAsTemplate(savingTemplateName)} disabled={!(savingTemplateName || '').trim()} className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-100 disabled:opacity-50">Сохранить</button>
+                <button onClick={() => setSavingTemplateName(null)} className="text-xs text-gray-500 hover:text-gray-900">Отмена</button>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => setSavingTemplateName(formData.title || '')}
+                  disabled={!formData.title.trim()}
+                  className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 disabled:opacity-50"
+                  title="Сохранить текущие поля как шаблон"
+                >
+                  Как шаблон
+                </button>
+                <div className="flex-1" />
+                <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100">Отмена</button>
+                <button onClick={save} disabled={!formData.title.trim()} className="px-4 py-2 text-sm bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:bg-gray-300">{editingTask ? 'Сохранить' : 'Создать'}</button>
+              </>
+            )}
           </div>
         </Modal>
       )}
