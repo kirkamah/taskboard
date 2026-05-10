@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Send, MessageSquare, Edit2, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Avatar from './Avatar';
-import LinkifiedText from './LinkifiedText';
+import Markdown from './Markdown';
 
 // Discussion thread for a single task. Mounted inside the task detail modal.
 // Permissions: any reader of the parent task can post; users edit/delete only
@@ -139,9 +139,9 @@ export default function TaskComments({ taskId, userId, profiles = {}, canModerat
                     </div>
                   ) : (
                     <>
-                      <p className="text-sm text-gray-800 whitespace-pre-wrap break-words mt-0.5">
-                        <LinkifiedText text={c.body} />
-                      </p>
+                      <div className="mt-0.5">
+                        <Markdown text={c.body} />
+                      </div>
                       {(isAuthor || canDelete) && (
                         <div className="flex gap-3 mt-1 text-xs text-gray-400">
                           {isAuthor && (

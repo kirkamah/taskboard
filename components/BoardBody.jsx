@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus, MessageSquare, Send, Tag as TagIcon, ListChecks, Bot } from 'lucide-react';
 import { Modal, Toggle } from './UI';
 import LinkifiedText from './LinkifiedText';
+import Markdown from './Markdown';
 import Avatar from './Avatar';
 import Tag from './Tag';
 import { createClient } from '@/lib/supabase/client';
@@ -688,11 +689,9 @@ export default function BoardBody({
             <button onClick={() => setSelectedTask(null)} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
           </div>
           <div className="p-6">
-            <p className="text-sm text-gray-700 whitespace-pre-wrap">
-              {selectedTask.description
-                ? <LinkifiedText text={selectedTask.description} />
-                : <span className="text-gray-400">Описание не указано</span>}
-            </p>
+            {selectedTask.description
+              ? <Markdown text={selectedTask.description} className="text-gray-700" />
+              : <p className="text-sm text-gray-400">Описание не указано</p>}
             {getTaskTags(selectedTask).length > 0 && (
               <div className="mt-4 pt-4 border-t border-gray-100">
                 <p className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
