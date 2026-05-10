@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus, MessageSquare, Send, Tag as TagIcon, ListChecks, ListTree, Bot } from 'lucide-react';
+import { Plus, X, Check, Trash2, Edit2, Maximize2, Calendar, UserPlus, MessageSquare, Send, Tag as TagIcon, ListChecks, ListTree, Bot, Repeat } from 'lucide-react';
 import { Modal, Toggle } from './UI';
 import LinkifiedText from './LinkifiedText';
 import Markdown from './Markdown';
@@ -98,6 +98,7 @@ export default function BoardBody({
     important: true,
     urgent: true,
     due_at: '', // строка из <input type="datetime-local">: YYYY-MM-DDTHH:MM
+    recurrence: '', // '' | 'daily' | 'weekly' | 'monthly'
     assignees: [], // массив user_id
     tags: [], // массив tag_id
     checklist: [], // [{id?, text, done}]
@@ -273,6 +274,7 @@ export default function BoardBody({
       important: !!tpl.important,
       urgent: !!tpl.urgent,
       due_at: '',
+      recurrence: '',
       assignees: [],
       tags: (tpl.tag_ids || []).filter((tid) => tags.some((t) => t.id === tid)),
       checklist: (tpl.checklist || []).map((c) => ({ text: c.text, done: false })),
@@ -340,7 +342,7 @@ export default function BoardBody({
   const archivedTasks = visibleTasks.filter(t => !!t.archived_at && !t.parent_task_id);
 
   const openAdd = () => {
-    setFormData({ title: '', description: '', important: true, urgent: true, due_at: '', assignees: [], tags: [], checklist: [] });
+    setFormData({ title: '', description: '', important: true, urgent: true, due_at: '', recurrence: '', assignees: [], tags: [], checklist: [] });
     setEditingTask(null);
     setShowAddModal(true);
   };
@@ -352,6 +354,7 @@ export default function BoardBody({
       important: task.important,
       urgent: task.urgent,
       due_at: isoToLocalInput(task.due_at),
+      recurrence: task.recurrence || '',
       assignees: task.assignees || [],
       tags: task.tagIds || [],
       checklist: (task.checklist || []).map((it) => ({ id: it.id, text: it.text, done: it.done })),
@@ -437,6 +440,7 @@ export default function BoardBody({
           important: formData.important,
           urgent: formData.urgent,
           due_at: dueIso,
+          recurrence: formData.recurrence || null,
         })
         .eq('id', editingTask.id)
         .select()
@@ -458,6 +462,7 @@ export default function BoardBody({
         urgent: formData.urgent,
         done: false,
         due_at: dueIso,
+        recurrence: formData.recurrence || null,
         ...(scope === 'personal' ? { owner_id: userId, room_id: null } : { room_id: roomId, owner_id: null })
       };
       const { data, error } = await supabase.from('tasks').insert(payload).select().single();
@@ -914,6 +919,7 @@ export default function BoardBody({
                         {task.due_at && (
                           <div className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 border rounded ${dueClasses}`}>
                             <Calendar size={10} /> {formatDue(task.due_at)}
+                            {task.recurrence && <Repeat size={10} className="ml-0.5" />}
                           </div>
                         )}
                         {task.created_by_api_key_id && (
@@ -1007,6 +1013,11 @@ export default function BoardBody({
                 {selectedTask.due_at && (
                   <span className={`text-xs px-2 py-1 border rounded inline-flex items-center gap-1 ${getDueClasses(selectedTask.due_at, selectedTask.done)}`}>
                     <Calendar size={11} /> {formatDue(selectedTask.due_at)}
+                  </span>
+                )}
+                {selectedTask.recurrence && (
+                  <span className="text-xs px-2 py-1 border border-gray-300 rounded inline-flex items-center gap-1 text-gray-700">
+                    <Repeat size={11} /> {t(`task.recurrence.tag${selectedTask.recurrence.charAt(0).toUpperCase() + selectedTask.recurrence.slice(1)}`)}
                   </span>
                 )}
               </div>
@@ -1301,6 +1312,20 @@ export default function BoardBody({
                 )}
               </div>
             </div>
+            {formData.due_at && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 uppercase tracking-wide mb-2">{t('task.field.recurrence')}</label>
+                <div className="flex flex-wrap gap-2">
+                  <Toggle active={!formData.recurrence} onClick={() => setFormData({ ...formData, recurrence: '' })}>{t('task.recurrence.none')}</Toggle>
+                  <Toggle active={formData.recurrence === 'daily'} onClick={() => setFormData({ ...formData, recurrence: 'daily' })}>{t('task.recurrence.daily')}</Toggle>
+                  <Toggle active={formData.recurrence === 'weekly'} onClick={() => setFormData({ ...formData, recurrence: 'weekly' })}>{t('task.recurrence.weekly')}</Toggle>
+                  <Toggle active={formData.recurrence === 'monthly'} onClick={() => setFormData({ ...formData, recurrence: 'monthly' })}>{t('task.recurrence.monthly')}</Toggle>
+                </div>
+                {formData.recurrence && (
+                  <p className="text-xs text-gray-500 mt-1.5">{t('task.field.recurrenceHint')}</p>
+                )}
+              </div>
+            )}
             {(editingTask ? canEditTask : canCreateTask) && tags.length > 0 && (
               <div>
                 <label className="text-xs font-medium text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-2">
