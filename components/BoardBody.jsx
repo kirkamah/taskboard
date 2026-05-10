@@ -43,6 +43,10 @@ export default function BoardBody({
   const [showCompleted, setShowCompleted] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [draggingTaskId, setDraggingTaskId] = useState(null);
+  // For within-quadrant reorder: which card is hovered, and whether the drop
+  // would land above (true) or below (false) it. Cleared on drop / dragEnd.
+  const [dragOverTaskId, setDragOverTaskId] = useState(null);
+  const [dragOverAbove, setDragOverAbove] = useState(true);
 
   // Load persisted per-user filters for this board. Scope id = roomId for
   // rooms, userId for the personal board — keeps keys disjoint.
@@ -110,6 +114,7 @@ export default function BoardBody({
     let query = supabase
       .from('tasks')
       .select('*, task_assignees(user_id), task_completion_requests(id, requester_id, request_note, status, created_at), task_tags(tag_id), task_checklist_items(id, text, done, position)')
+      .order('position', { ascending: false })
       .order('created_at', { ascending: false });
     if (scope === 'personal') {
       query = query.eq('owner_id', userId).is('room_id', null);
@@ -336,11 +341,60 @@ export default function BoardBody({
     setEditingTask(null);
   };
 
+  // Position helpers — fractional indexing avoids needing to rebalance siblings.
+  // "Top of quadrant" = max(position) + 1; bottom = min - 1; between = average.
+  const positionForTopOfQuadrant = (important, urgent, excludeId = null) => {
+    const inQuad = tasks.filter(t =>
+      t.important === important && t.urgent === urgent && t.id !== excludeId
+    );
+    if (inQuad.length === 0) return Date.now() / 1000;
+    return Math.max(...inQuad.map(t => Number(t.position) || 0)) + 1;
+  };
+
   const moveTaskToQuadrant = async (taskId, important, urgent) => {
     const task = tasks.find(t => t.id === taskId);
-    if (!task || (task.important === important && task.urgent === urgent)) return;
-    setTasks((prev) => prev.map(t => t.id === taskId ? { ...t, important, urgent } : t));
-    const { error } = await supabase.from('tasks').update({ important, urgent }).eq('id', taskId);
+    if (!task) return;
+    // Same quadrant + already on top: no-op. Otherwise bump to top of target.
+    const sameQuad = task.important === important && task.urgent === urgent;
+    const newPosition = positionForTopOfQuadrant(important, urgent, taskId);
+    if (sameQuad && task.position >= newPosition - 1) return;
+    setTasks((prev) => prev.map(t => t.id === taskId ? { ...t, important, urgent, position: newPosition } : t));
+    const { error } = await supabase.from('tasks').update({ important, urgent, position: newPosition }).eq('id', taskId);
+    if (error) {
+      await loadTasks();
+    }
+  };
+
+  // Drop the source card directly above/below a target card. Computes a
+  // fractional position so neighbours don't need to be rewritten.
+  const reorderTaskRelativeTo = async (sourceId, targetId, dropAbove) => {
+    if (sourceId === targetId) return;
+    const target = tasks.find(t => t.id === targetId);
+    const source = tasks.find(t => t.id === sourceId);
+    if (!target || !source) return;
+    // Sort same-quadrant tasks by current position (descending = top to bottom).
+    const sameQuadSorted = tasks
+      .filter(t => t.important === target.important && t.urgent === target.urgent && t.id !== sourceId)
+      .sort((a, b) => (Number(b.position) || 0) - (Number(a.position) || 0));
+    const targetIdx = sameQuadSorted.findIndex(t => t.id === targetId);
+    if (targetIdx === -1) return;
+    const targetPos = Number(target.position) || 0;
+    let newPos;
+    if (dropAbove) {
+      const above = sameQuadSorted[targetIdx - 1];
+      newPos = above ? (targetPos + (Number(above.position) || 0)) / 2 : targetPos + 1;
+    } else {
+      const below = sameQuadSorted[targetIdx + 1];
+      newPos = below ? (targetPos + (Number(below.position) || 0)) / 2 : targetPos - 1;
+    }
+    setTasks((prev) => prev.map(t => t.id === sourceId
+      ? { ...t, important: target.important, urgent: target.urgent, position: newPos }
+      : t
+    ));
+    const { error } = await supabase
+      .from('tasks')
+      .update({ important: target.important, urgent: target.urgent, position: newPos })
+      .eq('id', sourceId);
     if (error) {
       await loadTasks();
     }
@@ -555,6 +609,7 @@ export default function BoardBody({
                   const dueClasses = getDueClasses(task.due_at, task.done);
                   const isDragging = draggingTaskId === task.id;
                   const isOverdue = !!task.due_at && !task.done && new Date(task.due_at).getTime() < Date.now();
+                  const isInsertTarget = dragOverTaskId === task.id && draggingTaskId && draggingTaskId !== task.id;
                   return (
                     <div
                       key={task.id}
@@ -565,9 +620,34 @@ export default function BoardBody({
                         e.dataTransfer.effectAllowed = 'move';
                         try { e.dataTransfer.setData('text/plain', task.id); } catch {}
                       }}
-                      onDragEnd={() => { setDraggingTaskId(null); setDragOverQuadrant(null); }}
+                      onDragEnd={() => { setDraggingTaskId(null); setDragOverQuadrant(null); setDragOverTaskId(null); }}
+                      onDragOver={(e) => {
+                        if (!canEditTask || !draggingTaskId || draggingTaskId === task.id) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.dataTransfer.dropEffect = 'move';
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const above = e.clientY < rect.top + rect.height / 2;
+                        if (dragOverTaskId !== task.id || dragOverAbove !== above) {
+                          setDragOverTaskId(task.id);
+                          setDragOverAbove(above);
+                        }
+                      }}
+                      onDragLeave={(e) => {
+                        if (e.currentTarget.contains(e.relatedTarget)) return;
+                        setDragOverTaskId((cur) => cur === task.id ? null : cur);
+                      }}
+                      onDrop={(e) => {
+                        if (!canEditTask || !draggingTaskId || draggingTaskId === task.id) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        reorderTaskRelativeTo(draggingTaskId, task.id, dragOverAbove);
+                        setDraggingTaskId(null);
+                        setDragOverTaskId(null);
+                        setDragOverQuadrant(null);
+                      }}
                       onClick={() => { if (!draggingTaskId) setSelectedTask(task); }}
-                      className={`group border border-gray-200 rounded-md p-3 hover:border-gray-400 hover:shadow-sm bg-white transition-all ${canEditTask ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${isDragging ? 'opacity-40' : ''} ${isOverdue ? 'border-l-4 border-l-red-500' : ''}`}
+                      className={`group border border-gray-200 rounded-md p-3 hover:border-gray-400 hover:shadow-sm bg-white transition-all ${canEditTask ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} ${isDragging ? 'opacity-40' : ''} ${isOverdue ? 'border-l-4 border-l-red-500' : ''} ${isInsertTarget && dragOverAbove ? 'shadow-[0_-2px_0_0_rgb(17,24,39)]' : ''} ${isInsertTarget && !dragOverAbove ? 'shadow-[0_2px_0_0_rgb(17,24,39)]' : ''}`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="text-sm font-medium text-gray-900 line-clamp-2 flex-1">{task.title}</h3>
